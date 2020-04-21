@@ -23,17 +23,20 @@
  * THE SOFTWARE.
  */
 
-import FeatureSource from "../../../js/feature/featureSource";
 import TrackBase from "../../../js/trackBase.js";
 import IGVGraphics from "../../../js/igv-canvas.js";
 import IGVMath from "../../../js/igv-math.js";
+import FeatureCache from "../../../js/feature/featureCache";
+import GenomicInterval from "../../../js/genome/genomicInterval";
 import MenuUtils from "../../../js/ui/menuUtils.js";
+import Reader from "./niagadsGwasReader";
 import { createCheckbox } from "../../../js/igv-icons.js";
 import { extend } from "../../../js/util/igvUtils.js";
+import pack from "./../../../js/feature/featurePacker";
 
 const dataRangeMenuItem = MenuUtils.dataRangeMenuItem;
 
-const EqtlTrack = extend(
+const NiagadsGWASTrack = extend(
   TrackBase,
 
   function (config, browser) {
@@ -50,7 +53,7 @@ const EqtlTrack = extend(
     const min = config.minLogP || config.min;
     const max = config.maxLogP || config.max;
     this.dataRange = {
-      min: min || 3.5,
+      min: min || 1,
       max: max || 25,
     };
     if (!max) {
@@ -78,12 +81,11 @@ const EqtlTrack = extend(
         ? Math.min(2000000, config.visibilityWindow)
         : 2000000;
 
-    this.featureSource = new FeatureSource(config, browser.genome);
-
+    this.featureSource = new NiagadsGWASFeatureSource(config, browser.genome);
   }
 );
 
-EqtlTrack.prototype.paintAxis = function (ctx, pixelWidth, pixelHeight) {
+NiagadsGWASTrack.prototype.paintAxis = function (ctx, pixelWidth, pixelHeight) {
   var track = this,
     yScale = (track.dataRange.max - track.dataRange.min) / pixelHeight;
 
@@ -133,7 +135,7 @@ EqtlTrack.prototype.paintAxis = function (ctx, pixelWidth, pixelHeight) {
   );
 };
 
-EqtlTrack.prototype.getFeatures = function (chr, bpStart, bpEnd) {
+NiagadsGWASTrack.prototype.getFeatures = function (chr, bpStart, bpEnd) {
   const pValueField = this.pValueField;
 
   return this.featureSource
@@ -146,7 +148,7 @@ EqtlTrack.prototype.getFeatures = function (chr, bpStart, bpEnd) {
     });
 };
 
-EqtlTrack.prototype.draw = function (options) {
+NiagadsGWASTrack.prototype.draw = function (options) {
   var self = this,
     featureList = options.features,
     ctx = options.context,
@@ -173,15 +175,15 @@ EqtlTrack.prototype.draw = function (options) {
     ctx.save();
 
     // Draw in two passes, with "selected" eqtls drawn last
-    drawEqtls(false);
-    drawEqtls(true);
+    drawNiagadsGwas(false);
+    drawNiagadsGwas(true);
 
     ctx.restore();
   }
 
-  function drawEqtls(drawSelected) {
+  function drawNiagadsGwas(drawSelected) {
     var radius = drawSelected ? 2 * self.dotSize : self.dotSize,
-      eqtl,
+      datum,
       i,
       px,
       py,
@@ -192,25 +194,24 @@ EqtlTrack.prototype.draw = function (options) {
       capped;
 
     for (i = 0; i < len; i++) {
-      eqtl = featureList[i];
-      px = Math.round(eqtl.position - bpStart + 0.5) / bpPerPixel;
+      datum = featureList[i];
+
+      datum.position = datum.record_pk.split(":")[1];
+
+      px = Math.round(datum.position - bpStart + 0.5) / bpPerPixel;
       if (px < 0) continue;
       else if (px > pixelWidth) break;
 
-      snp = eqtl.snp.toUpperCase();
-      geneName = eqtl[self.geneField].toUpperCase();
+      snp = datum.variant;
 
-      isSelected =
-        selection && (selection.snp === snp || selection.gene === geneName);
-
-      if (!drawSelected || isSelected) {
-        // Add eqtl's gene to the selection if this is the selected snp.
+      if (!drawSelected) {
+        // Add datum's gene to the selection if this is the selected snp.
         // TODO -- this should not be done here in the rendering code.
-        if (selection && selection.snp === snp) {
+        /* if (selection && selection.snp === snp) {
           selection.addGene(geneName);
-        }
+        } */
 
-        var mLogP = -Math.log(eqtl[self.pValueField]) / Math.LN10;
+        var mLogP = datum.neg_log10_pvalue;
         if (mLogP >= self.dataRange.min) {
           if (mLogP > self.dataRange.max) {
             mLogP = self.dataRange.max;
@@ -223,8 +224,8 @@ EqtlTrack.prototype.draw = function (options) {
             0 + radius,
             pixelHeight - Math.round((mLogP - self.dataRange.min) / yScale)
           );
-          eqtl.px = px;
-          eqtl.py = py;
+          datum.px = px;
+          datum.py = py;
 
           if (drawSelected && selection) {
             color = selection.colorForGene(geneName);
@@ -251,7 +252,7 @@ EqtlTrack.prototype.draw = function (options) {
 /**
  * Return "popup data" for feature @ genomic location.  Data is an array of key-value pairs
  */
-EqtlTrack.prototype.popupData = function (config) {
+NiagadsGWASTrack.prototype.popupData = function (config) {
   let features = config.viewport.getCachedFeatures();
   if (!features || features.length === 0) return [];
 
@@ -261,7 +262,7 @@ EqtlTrack.prototype.popupData = function (config) {
     referenceFrame = config.viewport.genomicState.referenceFrame,
     tolerance = 2 * this.dotSize * referenceFrame.bpPerPixel,
     dotSize = this.dotSize,
-    tissue = this.name,
+    track = this.name,
     popupData = [];
 
   features.forEach(function (feature) {
@@ -275,18 +276,16 @@ EqtlTrack.prototype.popupData = function (config) {
       }
 
       popupData.push(
-        { name: "snp id", value: feature.snp },
-        { name: "gene id", value: feature.geneId },
-        { name: "gene name", value: feature.geneName },
-        { name: "p value", value: feature.pValue },
-        { name: "tissue", value: tissue }
+        { name: "variant", value: feature.variant },
+        { name: "p value", value: feature.pvalue },
+        { name: "track", value: track }
       );
     }
   });
   return popupData;
 };
 
-EqtlTrack.prototype.menuItemList = function () {
+NiagadsGWASTrack.prototype.menuItemList = function () {
   var self = this,
     menuItems = [];
 
@@ -304,10 +303,10 @@ EqtlTrack.prototype.menuItemList = function () {
   return menuItems;
 };
 
-EqtlTrack.prototype.doAutoscale = function (featureList) {
+NiagadsGWASTrack.prototype.doAutoscale = function (featureList) {
   if (featureList.length > 0) {
-    var values = featureList.map(function (eqtl) {
-      return -Math.log(eqtl.value) / Math.LN10;
+    var values = featureList.map(function (datum) {
+      return datum.neg_log10_pvalue;
     });
 
     this.dataRange.max = IGVMath.percentile(values, this.autoscalePercentile);
@@ -320,4 +319,136 @@ EqtlTrack.prototype.doAutoscale = function (featureList) {
   return this.dataRange;
 };
 
-export default EqtlTrack;
+export default NiagadsGWASTrack;
+
+class NiagadsGWASFeatureSource {
+  constructor(config, genome) {
+    this.config = config || {};
+    this.genome = genome;
+
+    this.reader = new Reader(config);
+    this.queryable = true;
+    this.expandQuery = config.expandQuery ? true : false;
+  }
+
+  async getFeatures(chr, bpStart, bpEnd, _, visibilityWindow) {
+    const reader = this.reader;
+    const genome = this.genome;
+    const queryChr = genome ? genome.getChromosomeName(chr) : chr;
+    const featureCache = await getFeatureCache.call(this);
+    const isQueryable = this.queryable;
+
+    if ("all" === chr.toLowerCase()) {
+      // queryable sources don't support whole genome view
+      return [];
+    } else {
+      return featureCache.queryFeatures(queryChr, bpStart, bpEnd);
+    }
+
+    async function getFeatureCache() {
+      let intervalStart = bpStart;
+      let intervalEnd = bpEnd;
+      let genomicInterval = new GenomicInterval(
+        queryChr,
+        intervalStart,
+        intervalEnd
+      );
+
+      if (
+        this.featureCache &&
+        (this.static ||
+          this.featureCache.containsRange(genomicInterval) ||
+          "all" === chr.toLowerCase())
+      ) {
+        return this.featureCache;
+      } else {
+        // Use visibility window to potentially expand query interval.
+        // This can save re-queries as we zoom out.  Visibility window <= 0 is a special case
+        // indicating whole chromosome should be read at once.
+        if (
+          (!visibilityWindow || visibilityWindow <= 0) &&
+          this.expandQuery !== false
+        ) {
+          // Whole chromosome
+          intervalStart = 0;
+          intervalEnd = Number.MAX_SAFE_INTEGER;
+        } else if (
+          visibilityWindow > bpEnd - bpStart &&
+          this.expandQuery !== false
+        ) {
+          const expansionWindow = Math.min(
+            4.1 * (bpEnd - bpStart),
+            visibilityWindow
+          );
+          intervalStart = Math.max(0, (bpStart + bpEnd - expansionWindow) / 2);
+          intervalEnd = bpStart + expansionWindow;
+        }
+        genomicInterval = new GenomicInterval(
+          queryChr,
+          intervalStart,
+          intervalEnd
+        );
+
+        let featureList = await reader.readFeatures(
+          queryChr,
+          genomicInterval.start,
+          genomicInterval.end
+        );
+        if (this.queryable === undefined) {
+          this.queryable = reader.indexed;
+        }
+
+        if (featureList) {
+          this.ingestFeatures(featureList, genomicInterval);
+        } else {
+          this.featureCache = new FeatureCache(); // Empty cache
+        }
+        return this.featureCache;
+      }
+    }
+  }
+
+  ingestFeatures(featureList, genomicInterval) {
+    // Assign overlapping features to rows
+    if (this.config.format !== "wig" && this.config.type !== "junctions") {
+      const maxRows = this.config.maxRows || 500;
+      packFeatures(featureList, maxRows);
+    }
+
+    //i think building this tree is what's causing problems
+    this.featureCache = new FeatureCache(
+      featureList,
+      this.genome,
+      genomicInterval
+    );
+  }
+}
+
+function packFeatures(features, maxRows) {
+  maxRows = maxRows || 1000;
+  if (features == null || features.length === 0) {
+    return;
+  }
+
+  // Segregate by chromosome
+  var chrFeatureMap = {},
+    chrs = [];
+  features.forEach(function (feature) {
+    var chr = feature.chr,
+      flist = chrFeatureMap[chr];
+
+    if (!flist) {
+      flist = [];
+      chrFeatureMap[chr] = flist;
+      chrs.push(chr);
+    }
+
+    flist.push(feature);
+  });
+
+  // Loop through chrosomosomes and pack features;
+
+  chrs.forEach(function (chr) {
+    pack(chrFeatureMap[chr], maxRows);
+  });
+}

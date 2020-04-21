@@ -52,6 +52,7 @@ import { decodeDataURI, resolveURL } from "./util/uriUtils.js";
 import { doAutoscale, download, validateLocusExtent } from "./util/igvUtils.js";
 import google from "./google/googleUtils.js";
 import GtexUtils from "./gtex/gtexUtils.js";
+import NiagadsGWASTrack from "./../plugins/tracks/niagads/niagadsGwas";
 
 const Browser = function (options, parentDiv) {
   this.guid = guid();
@@ -703,6 +704,10 @@ Browser.prototype.createTrack = function (config) {
   let trackConfig = Object.assign({}, config);
 
   trackConfig.browser = this;
+
+  TrackFactory.addTrack("niagadsgwas", (config, browser) => {
+    return new NiagadsGWASTrack(config, browser);
+  });
 
   let track;
   switch (type) {
