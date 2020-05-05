@@ -17,7 +17,7 @@ NiagadsGwasReader.prototype.readFeatures = async function (
     queryStart = Math.floor(bpStart),
     queryEnd = Math.ceil(bpEnd),
     queryURL =
-      "data/" +
+      this.url +
       "?chromosome=" +
       queryChr +
       "&start=" +

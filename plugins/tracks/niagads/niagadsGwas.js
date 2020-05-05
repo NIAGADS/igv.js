@@ -30,7 +30,6 @@ import FeatureCache from "../../../js/feature/featureCache";
 import GenomicInterval from "../../../js/genome/genomicInterval";
 import MenuUtils from "../../../js/ui/menuUtils.js";
 import Reader from "./niagadsGwasReader";
-import { createCheckbox } from "../../../js/igv-icons.js";
 import { extend } from "../../../js/util/igvUtils.js";
 import pack from "./../../../js/feature/featurePacker";
 
@@ -56,6 +55,7 @@ const NiagadsGWASTrack = extend(
       min: min || 1,
       max: max || 25,
     };
+
     if (!max) {
       this.autoscale = true;
     } else {
@@ -205,13 +205,7 @@ NiagadsGWASTrack.prototype.draw = function (options) {
       snp = datum.variant;
 
       if (!drawSelected) {
-        // Add datum's gene to the selection if this is the selected snp.
-        // TODO -- this should not be done here in the rendering code.
-        /* if (selection && selection.snp === snp) {
-          selection.addGene(geneName);
-        } */
-
-        var mLogP = datum.neg_log10_pvalue;
+        let mLogP = datum.neg_log10_pvalue;
         if (mLogP >= self.dataRange.min) {
           if (mLogP > self.dataRange.max) {
             mLogP = self.dataRange.max;
@@ -234,7 +228,12 @@ NiagadsGWASTrack.prototype.draw = function (options) {
               strokeStyle: "black",
             });
           } else {
-            color = capped ? "rgb(150, 150, 150)" : "rgb(180, 180, 180)";
+            color =
+              mLogP < 1.3
+                ? "rgb(180, 180, 180)"
+                : capped
+                ? /* blue */ "rgb(16, 151, 230)"
+                : getColor(mLogP);
             IGVGraphics.setProperties(ctx, {
               fillStyle: color,
               strokeStyle: color,
@@ -248,6 +247,38 @@ NiagadsGWASTrack.prototype.draw = function (options) {
     }
   }
 };
+
+const getColor = (mlogP) => {
+  const index = Math.floor(mlogP) - 1;
+  return scale[index] || "rgb(180, 180, 180)";
+};
+
+const scale = [
+  "#ff1300",
+  "#fb2113",
+  "#f62b20",
+  "#f1322b",
+  "#ed3935",
+  "#e83e3e",
+  "#e34347",
+  "#dd4850",
+  "#d84c59",
+  "#d25062",
+  "#cc546a",
+  "#c65773",
+  "#bf5b7c",
+  "#b85e85",
+  "#b0618d",
+  "#a86396",
+  "#9f669f",
+  "#9569a8",
+  "#8a6bb1",
+  "#7d6eba",
+  "#6e70c3",
+  "#5b72cc",
+  "#4175d5",
+  "#0077de",
+];
 
 /**
  * Return "popup data" for feature @ genomic location.  Data is an array of key-value pairs
@@ -290,15 +321,6 @@ NiagadsGWASTrack.prototype.menuItemList = function () {
     menuItems = [];
 
   menuItems.push(dataRangeMenuItem(this.trackView));
-
-  menuItems.push({
-    object: createCheckbox("Autoscale", self.autoscale),
-    click: function () {
-      self.autoscale = !self.autoscale;
-      self.config.autoscale = self.autoscale;
-      self.trackView.setDataRange(undefined, undefined, self.autoscale);
-    },
-  });
 
   return menuItems;
 };

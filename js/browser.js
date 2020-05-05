@@ -705,10 +705,6 @@ Browser.prototype.createTrack = function (config) {
 
   trackConfig.browser = this;
 
-  TrackFactory.addTrack("niagadsgwas", (config, browser) => {
-    return new NiagadsGWASTrack(config, browser);
-  });
-
   let track;
   switch (type) {
     case "annotation":
@@ -765,8 +761,8 @@ Browser.prototype.addTrack = async function (track) {
   }
 };
 
-Browser.prototype.addTrackToFactory = function (track) {
-  TrackFactory.addTrack(track);
+Browser.prototype.addTrackToFactory = function (name, track) {
+  TrackFactory.addTrack(name, track);
 };
 
 Browser.prototype.reorderTracks = function () {
