@@ -9,8 +9,6 @@ import version from "./version.js"
 import * as TrackUtils from "./util/trackUtils.js"
 import {igvxhr} from "../node_modules/igv-utils/src/index.js"
 
-const setApiKey = igvxhr.setApiKey
-
 embedCss()
 
 function setGoogleOauthToken(accessToken) {
@@ -26,6 +24,7 @@ const oauth = igvxhr.oauth
 
 export default {
     TrackUtils,
+    TrackView,
     IGVGraphics,
     MenuUtils,
     DataRangeDialog,
@@ -37,7 +36,6 @@ export default {
     setGoogleOauthToken,
     setOauthToken,
     oauth,
-    version,
-    setApiKey
+    version
 }
 
