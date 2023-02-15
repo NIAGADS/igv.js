@@ -30,7 +30,6 @@ import TrackBase from "../trackBase.js"
 import IGVGraphics from "../igv-canvas.js"
 import {createCheckbox} from "../igv-icons.js"
 import {ColorTable, PaletteColorTable} from "../util/colorPalletes.js"
-import {makeVCFChords, sendChords} from "../jbrowse/circularViewUtils.js"
 import {FileUtils, StringUtils} from "../../node_modules/igv-utils/src/index.js"
 
 const isString = StringUtils.isString
@@ -591,52 +590,12 @@ class VariantTrack extends TrackBase {
                 })
         }
 
-        // Experimental JBrowse circular view integration
-        if (this.browser.circularView) {
-
-            menuItems.push('<hr>')
-            menuItems.push({
-                label: 'Add SVs to circular view',
-                click: () => {
-                    const inView = []
-                    for (let viewport of this.trackView.viewports) {
-                        this.sendChordsForViewport(viewport)
-                    }
-                }
-            })
-        }
-
         return menuItems
     }
 
 
     contextMenuItemList(clickState) {
-
-        // Experimental JBrowse circular view integration
-        if (this.browser.circularView) {
-            const viewport = clickState.viewport
-            const list = []
-
-            list.push({
-                label: 'Add SVs to Circular View',
-                click: () => {
-                    this.sendChordsForViewport(viewport)
-                }
-            })
-
-            list.push('<hr/>')
-            return list
-        }
-    }
-
-
-    sendChordsForViewport(viewport) {
-        const refFrame = viewport.referenceFrame
-        const inView = "all" === refFrame.chr ?
-            this.featureSource.getAllFeatures() :
-            this.featureSource.featureCache.queryFeatures(refFrame.chr, refFrame.start, refFrame.end)
-        const chords = makeVCFChords(inView)
-        sendChords(chords, this, refFrame, 0.5)
+        return []
     }
 
     /**

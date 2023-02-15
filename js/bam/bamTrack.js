@@ -33,7 +33,6 @@ import {createCheckbox} from "../igv-icons.js"
 import MenuUtils from "../ui/menuUtils.js"
 import {PaletteColorTable} from "../util/colorPalletes.js"
 import {IGVColor, StringUtils} from "../../node_modules/igv-utils/src/index.js"
-import {makePairedAlignmentChords, makeSupplementalAlignmentChords, sendChords} from "../jbrowse/circularViewUtils.js"
 import {isSecureContext} from "../util/igvUtils.js"
 import PairedEndStats from "./pairedEndStats.js"
 import {createBlatTrack} from "../blat/blatClient.js"
@@ -380,33 +379,6 @@ class BAMTrack extends TrackBase {
             })
         }
 
-        // Add chords to JBrowse circular view, if present
-        if (this.browser.circularView &&
-            (this.alignmentTrack.hasPairs || this.alignmentTrack.hasSupplemental)) {
-            menuItems.push('<hr/>')
-            if (this.alignmentTrack.hasPairs) {
-                menuItems.push({
-                    label: 'Add discordant pairs to circular view',
-                    click: () => {
-                        for (let viewport of this.trackView.viewports) {
-                            this.addPairedChordsForViewport(viewport)
-                        }
-                    }
-                })
-            }
-            if (this.alignmentTrack.hasSupplemental) {
-                menuItems.push({
-                    label: 'Add split reads to circular view',
-                    click: () => {
-                        for (let viewport of this.trackView.viewports) {
-                            this.addSplitChordsForViewport(viewport)
-                        }
-                    }
-                })
-            }
-        }
-
-
         // Display mode
         menuItems.push('<hr/>')
         const $dml = $('<div class="igv-track-menu-category">')
@@ -532,68 +504,6 @@ class BAMTrack extends TrackBase {
         this.coverageTrack.autoscale = autoscale
     }
 
-    /**
-     * Add chords to the circular view for the given viewport, represented by its reference frame
-     * @param refFrame
-     */
-    addPairedChordsForViewport(viewport) {
-
-        const maxTemplateLength = this.maxTemplateLength
-        const inView = []
-        const refFrame = viewport.referenceFrame
-        for (let a of viewport.cachedFeatures.allAlignments()) {
-            if (a.end >= refFrame.start
-                && a.start <= refFrame.end) {
-                if (a.paired) {
-                    if (a.end - a.start > maxTemplateLength) {
-                        inView.push(a)
-                    }
-                } else {
-                    if (a.mate
-                        && a.mate.chr
-                        && (a.mate.chr !== a.chr || Math.max(a.fragmentLength) > maxTemplateLength)) {
-                        inView.push(a)
-                    }
-                }
-            }
-        }
-        const chords = makePairedAlignmentChords(inView)
-        sendChords(chords, this, refFrame, 0.02)
-
-        // const chordSetColor = IGVColor.addAlpha("all" === refFrame.chr ? this.color : getChrColor(refFrame.chr), 0.02)
-        // const trackColor = IGVColor.addAlpha(this.color || 'rgb(0,0,255)', 0.02)
-        //
-        // // name the chord set to include track name and locus
-        // const encodedName = this.name.replaceAll(' ', '%20')
-        // const chordSetName = "all" === refFrame.chr ? encodedName :
-        //     `${encodedName} (${refFrame.chr}:${refFrame.start}-${refFrame.end}`
-        // this.browser.circularView.addChords(chords, {name: chordSetName, color: chordSetColor, trackColor: trackColor})
-    }
-
-    addSplitChordsForViewport(viewport) {
-
-        const inView = []
-        const refFrame = viewport.referenceFrame
-        for (let a of viewport.cachedFeatures.allAlignments()) {
-
-            const sa = a.hasTag('SA')
-            if (a.end >= refFrame.start && a.start <= refFrame.end && sa) {
-                inView.push(a)
-            }
-        }
-
-        const chords = makeSupplementalAlignmentChords(inView)
-        sendChords(chords, this, refFrame, 0.02)
-
-        // const chordSetColor = IGVColor.addAlpha("all" === refFrame.chr ? this.color : getChrColor(refFrame.chr), 0.02)
-        // const trackColor = IGVColor.addAlpha(this.color || 'rgb(0,0,255)', 0.02)
-        //
-        // // name the chord set to include track name and locus
-        // const encodedName = this.name.replaceAll(' ', '%20')
-        // const chordSetName = "all" === refFrame.chr ? encodedName :
-        //     `${encodedName} (${refFrame.chr}:${refFrame.start}-${refFrame.end}`
-        // this.browser.circularView.addChords(chords, {name: chordSetName, color: chordSetColor, trackColor: trackColor})
-    }
 }
 
 
@@ -911,10 +821,6 @@ class AlignmentTrack {
                 for (let alignment of alignmentRow.alignments) {
 
                     this.hasPairs = this.hasPairs || alignment.isPaired()
-                    if (this.browser.circularView) {
-                        // This is an expensive check, only do it if needed
-                        this.hasSupplemental = this.hasSupplemental || alignment.hasTag('SA')
-                    }
 
                     if ((alignment.start + alignment.lengthOnRef) < bpStart) continue
                     if (alignment.start > bpEnd) break
@@ -1396,27 +1302,6 @@ class AlignmentTrack {
 
                 list.push('<hr/>')
             }
-        }
-
-        // Experimental JBrowse feature
-        if (this.browser.circularView && (this.hasPairs || this.hasSupplemental)) {
-            if (this.hasPairs) {
-                list.push({
-                    label: 'Add discordant pairs to circular view',
-                    click: () => {
-                        this.parent.addPairedChordsForViewport(viewport)
-                    }
-                })
-            }
-            if (this.hasSupplemental) {
-                list.push({
-                    label: 'Add split reads to circular view',
-                    click: () => {
-                        this.parent.addSplitChordsForViewport(viewport)
-                    }
-                })
-            }
-            list.push('<hr/>')
         }
 
         return list

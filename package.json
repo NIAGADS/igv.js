@@ -49,7 +49,6 @@
     "atob": "^2.1.2",
     "btoa": "^1.2.1",
     "chai": "^4.3.7",
-    "circular-view": "github:igvteam/circular-view#v0.2.4",
     "core-js": "^3.20.3",
     "eslint": "^6.4.0",
     "hdf5-indexed-reader": "github:/jrobinso/hdf5-indexed-reader#v0.5.2",

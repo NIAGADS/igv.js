@@ -33,7 +33,6 @@ import MenuUtils from "../ui/menuUtils.js"
 import {createCheckbox} from "../igv-icons.js"
 import {scoreShade} from "../util/ucscUtils.js"
 import FeatureSource from "./featureSource.js"
-import {makeBedPEChords, sendChords} from "../jbrowse/circularViewUtils.js"
 import {getChrColor} from "../bam/bamTrack.js"
 
 function getArcType(config) {
@@ -509,69 +508,11 @@ class InteractionTrack extends TrackBase {
             items = items.concat(MenuUtils.numericDataMenuItems(this.trackView))
         }
 
-        if (this.browser.circularView) {
-            items.push('<hr/>')
-            items.push({
-                label: 'Add interactions to circular view',
-                click: () => {
-                    for (let viewport of this.trackView.viewports) {
-                        this.addChordsForViewport(viewport.referenceFrame)
-                    }
-                }
-            })
-        }
-
         return items
     }
 
     contextMenuItemList(clickState) {
-
-        // Experimental JBrowse feature
-        if (this.browser.circularView ) {
-            const viewport = clickState.viewport
-            const list = []
-
-            list.push({
-                label: 'Add interactions to circular view',
-                click: () => {
-                    const refFrame = viewport.referenceFrame
-                    // first pass: to get all the relevant features
-                    this.addChordsForViewport(refFrame)
-                }
-            })
-
-            list.push('<hr/>')
-            return list
-        }
-    }
-
-    /**
-     * Add chords to the circular view for the given viewport, represented by its reference frame
-     * @param refFrame
-     */
-    addChordsForViewport(refFrame) {
-        const cachedFeatures = "all" === refFrame.chr ?
-            this.featureSource.getAllFeatures() :
-            this.featureSource.featureCache.queryFeatures(refFrame.chr, refFrame.start, refFrame.end)
-
-        // inView features are simply features that have been drawn, i.e. have a drawState
-        const inView = cachedFeatures.filter(f => f.drawState)
-        if(inView.length === 0) return;
-
-        const chords = makeBedPEChords(inView)
-        sendChords(chords, this, refFrame, 0.5)
-        //
-        //
-        // // for filtered set, distinguishing the chromosomes is more critical than tracks
-        // const chordSetColor = IGVColor.addAlpha("all" === refFrame.chr ? this.color : getChrColor(refFrame.chr), 0.5)
-        // const trackColor = IGVColor.addAlpha(this.color, 0.5)
-        //
-        // // name the chord set to include locus and filtering information
-        // const encodedName = this.name.replaceAll(' ', '%20')
-        // const chordSetName = "all" === refFrame.chr ?
-        //     encodedName :
-        //     `${encodedName} (${refFrame.chr}:${refFrame.start}-${refFrame.end} ; range:${this.dataRange.min}-${this.dataRange.max})`
-        // this.browser.circularView.addChords(chords, {track: chordSetName, color: chordSetColor, trackColor: trackColor})
+        return []
     }
 
     doAutoscale(features) {

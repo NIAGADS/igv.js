@@ -39,8 +39,6 @@ import ViewportCenterLine from './ui/viewportCenterLine.js'
 import IdeogramTrack from "./ideogramTrack.js"
 import RulerTrack from "./rulerTrack.js"
 import GtexSelection from "./gtex/gtexSelection.js"
-import CircularViewControl from "./ui/circularViewControl.js"
-import {createCircularView, makeCircViewChromosomes} from "./jbrowse/circularViewUtils.js"
 import CustomButton from "./ui/customButton.js"
 import ROIManager from './roi/ROIManager.js'
 import ROITable from './roi/ROITable.js'
@@ -611,14 +609,7 @@ class Browser {
             }
         }
 
-        if (genomeChange && this.circularView) {
-            this.circularView.setAssembly({
-                name: this.genome.id,
-                id: this.genome.id,
-                chromosomes: makeCircViewChromosomes(this.genome)
-            })
-        }
-    }
+     }
 
     cleanHouseForSession() {
 
@@ -632,10 +623,6 @@ class Browser {
         elements.forEach(column => column.remove())
 
         this.trackViews = []
-
-        if (this.circularView) {
-            this.circularView.clearChords()
-        }
 
     }
 
@@ -1910,29 +1897,6 @@ class Browser {
         }
     }
 
-    createCircularView(container, show) {
-        show = show === true   // convert undefined to boolean
-        this.circularView = createCircularView(container, this)
-        this.circularViewControl = new CircularViewControl(this.$toggle_button_container.get(0), this)
-        this.circularView.setAssembly({
-            name: this.genome.id,
-            id: this.genome.id,
-            chromosomes: makeCircViewChromosomes(this.genome)
-        })
-        this.circularViewVisible = show
-        return this.circularView
-    }
-
-    get circularViewVisible() {
-        return this.circularView !== undefined && this.circularView.visible
-    }
-
-    set circularViewVisible(isVisible) {
-        if (this.circularView) {
-            this.circularView.visible = isVisible
-            this.circularViewControl.setState(isVisible)
-        }
-    }
 }
 
 /**
