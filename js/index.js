@@ -1,5 +1,6 @@
 // Defines the top-level API for the igv module
 
+import * as IGVUtils from './util/igvUtils.js'
 import MenuUtils from "./ui/menuUtils.js"
 import DataRangeDialog from "./ui/dataRangeDialog.js"
 import IGVGraphics from "./igv-canvas.js"
@@ -24,6 +25,7 @@ const oauth = igvxhr.oauth
 
 export default {
     TrackUtils,
+    IGVUtils,
     TrackView,
     IGVGraphics,
     MenuUtils,
