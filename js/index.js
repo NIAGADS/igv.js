@@ -9,6 +9,7 @@ import embedCss from "./embedCss.js"
 import version from "./version.js"
 import * as TrackUtils from "./util/trackUtils.js"
 import {igvxhr} from "../node_modules/igv-utils/src/index.js"
+import TrackView from "./trackView.js"
 
 embedCss()
 
