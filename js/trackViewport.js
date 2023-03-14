@@ -536,10 +536,10 @@ class TrackViewport extends Viewport {
 
     async getFeatures(track, chr, start, end, bpPerPixel) {
         if (this.featureCache && this.featureCache.containsRange(chr, start, end, bpPerPixel)) {
-            console.log('TrackViewport: getFeatures(...) -> return featureCache.features')
+            // console.log('TrackViewport: getFeatures(...) -> return featureCache.features')
             return this.featureCache.features
         } else if (typeof track.getFeatures === "function") {
-            console.log('TrackViewport: getFeatures(...) -> track.getFeatures(...)')
+            // console.log('TrackViewport: getFeatures(...) -> track.getFeatures(...)')
             const features = await track.getFeatures(chr, start, end, bpPerPixel, this)
             this.checkContentHeight(features)
             return features
