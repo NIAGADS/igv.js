@@ -24,6 +24,8 @@ import {
 import GenomicInterval from "./genome/genomicInterval";
 import featurePacker from "./feature/featurePacker";
 import TrackBase from "../js/trackBase.js";
+import {BinnedColorScale, ConstantColorScale} from "./util/colorScale.js"
+import {randomColor as randomColorPalette} from "./util/colorPalletes";
 
 const setApiKey = igvxhr.setApiKey;
 
@@ -58,5 +60,8 @@ export default {
   FeatureCache,
   IGVMath,
   GenomicInterval,
-  TrackBase
+  TrackBase,
+  BinnedColorScale,
+  ConstantColorScale,
+  randomColorPalette
 };
