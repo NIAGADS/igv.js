@@ -3,6 +3,7 @@
 import MenuUtils from "./ui/menuUtils.js";
 import DataRangeDialog from "./ui/dataRangeDialog.js";
 import IGVGraphics from "./igv-canvas.js";
+import { createCheckbox } from "./igv-icons.js";
 import {
   createBrowser,
   createTrack,
@@ -19,6 +20,9 @@ import {
   oauth,
   IGVMath,
   FeatureCache,
+  FileUtils,
+  IGVColor,
+  StringUtils
 } from "../node_modules/igv-utils/src/index.js";
 
 import GenomicInterval from "./genome/genomicInterval";
@@ -26,7 +30,8 @@ import featurePacker from "./feature/featurePacker";
 import FeatureSource from "./feature/featureSource";
 import TrackBase from "../js/trackBase.js";
 import {BinnedColorScale, ConstantColorScale} from "./util/colorScale.js"
-import {randomColor as randomColorPalette} from "./util/colorPalletes";
+import {randomColor as randomColorPalette, ColorTable, PaletteColorTable} from "./util/colorPalletes";
+import { makeVCFChords} from "./jbrowse/circularViewUtils";
 
 const setApiKey = igvxhr.setApiKey;
 
@@ -65,5 +70,12 @@ export default {
   BinnedColorScale,
   ConstantColorScale,
   randomColorPalette,
-  FeatureSource
+  ColorTable, 
+  PaletteColorTable,
+  makeVCFChords,
+  FeatureSource,
+  FileUtils,
+  IGVColor,
+  StringUtils,
+  createCheckbox
 };
