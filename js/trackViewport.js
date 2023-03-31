@@ -857,18 +857,21 @@ function getPopupContent(event, viewport) {
 function formatPopoverText(nameValues) {
 
     const rows = nameValues.map(nameValue => {
-
-        if (nameValue.name) {
-            const str = `<span>${nameValue.name}</span>&nbsp&nbsp&nbsp${nameValue.value}`
-            return `<div title="${nameValue.value}">${str}</div>`
-        } else if ('<hr>' === nameValue) { // this can be retired if nameValue.html is allowed.
-            return nameValue
-        } else if (nameValue.html) {
-            return nameValue.html
-        } else {
-            return `<div title="${nameValue}">${nameValue}</div>`
+        if (nameValue == "<hr>" || nameValue == "<HR>") {
+            return nameValue;
         }
 
+        const value = nameValue.html ? nameValue.html : (nameValue.value ? nameValue.value : nameValue);
+        const title = nameValue.title ? nameValue.title : null;
+        const label = nameValue.name ? "<span>" + nameValue.name +"</span>&nbsp&nbsp&nbsp" : "";
+        const popoverText = label + value;
+        
+        if (title) {
+            return `<div title="${title}">${popoverText}</div>`;
+        }
+        else {
+            return `<div>${popoverText}</div>`;
+        }
     })
 
     return rows.join('')
