@@ -29,7 +29,7 @@ import GenomicInterval from "./genome/genomicInterval";
 import featurePacker from "./feature/featurePacker";
 import FeatureSource from "./feature/featureSource";
 import TrackBase from "../js/trackBase.js";
-import {BinnedColorScale, ConstantColorScale} from "./util/colorScale.js"
+import {BinnedColorScale, ConstantColorScale, GradientColorScale} from "./util/colorScale.js"
 import {randomColor as randomColorPalette, ColorTable, PaletteColorTable, appleCrayonPalette} from "./util/colorPalletes";
 import { makeVCFChords} from "./jbrowse/circularViewUtils";
 
@@ -69,6 +69,7 @@ export default {
   TrackBase,
   BinnedColorScale,
   ConstantColorScale,
+  GradientColorScale,
   randomColorPalette,
   ColorTable, 
   PaletteColorTable,
