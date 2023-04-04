@@ -23,7 +23,7 @@
  * THE SOFTWARE.
  */
 
-import {GoogleAuth, igvxhr, oauth} from '../node_modules/igv-utils/src/index.js'
+import {GoogleAuth, igvxhr} from '../node_modules/igv-utils/src/index.js'
 import Browser from "./browser.js"
 import GenomeUtils from "./genome/genome.js"
 
@@ -54,7 +54,7 @@ async function createBrowser(parentDiv, config) {
         igvxhr.setApiKey(config.apiKey)
     }
     if (config.oauthToken) {
-        oauth.setToken(config.oauthToken)
+        igvxhr.setOauthToken(config.oauthToken)
     }
     if (config.clientId && (!GoogleAuth.isInitialized())) {
         await GoogleAuth.init({
@@ -77,13 +77,11 @@ async function createBrowser(parentDiv, config) {
         await browser.loadSessionObject(config)
     }
 
-    const isWGV = browser.isMultiLocusWholeGenomeView() || GenomeUtils.isWholeGenomeView(browser.referenceFrameList[0].chr)
-    browser.navbarManager.navbarDidResize(browser.$navigation.width(), isWGV)
+    browser.navbarManager.navbarDidResize(browser.$navigation.width())
 
     return browser
 
 }
-
 
 function removeBrowser(browser) {
     browser.dispose()
@@ -97,6 +95,10 @@ function removeAllBrowsers() {
         browser.root.remove()
     }
     allBrowsers = []
+}
+
+function getAllBrowsers() {
+    return allBrowsers;
 }
 
 /**
@@ -133,6 +135,14 @@ function setDefaults(config) {
 
     if (undefined === config.showTrackLabels) {
         config.showTrackLabels = true
+    }
+
+    if (undefined === config.showROITableButton) {
+        config.showROITableButton = false
+    }
+
+    if (undefined === config.showROITable) {
+        config.showROITable = false
     }
 
     if (undefined === config.showCursorTrackingGuideButton) {
@@ -268,4 +278,4 @@ async function createTrack(config, browser) {
     return await Browser.prototype.createTrack.call(browser, config)
 }
 
-export {createTrack, createBrowser, removeBrowser, removeAllBrowsers, visibilityChange}
+export {createTrack, createBrowser, removeBrowser, removeAllBrowsers, getAllBrowsers, visibilityChange}

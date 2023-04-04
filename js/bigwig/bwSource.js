@@ -37,11 +37,12 @@ class BWSource {
 
     async getFeatures({chr, start, end, bpPerPixel, windowFunction}) {
 
+        const isBigWig = this.reader.type === "bigwig"
+
         const features = (chr.toLowerCase() === "all") ?
-            await this.getWGValues(windowFunction) :
+            (isBigWig ? await this.getWGValues(windowFunction) : []) :
             await this.reader.readFeatures(chr, start, chr, end, bpPerPixel, windowFunction)
 
-        const isBigWig = this.reader.type === "bigwig"
         if (!isBigWig) {
             pack(features)
         }
@@ -91,7 +92,7 @@ class BWSource {
     }
 
     supportsWholeGenome() {
-        return this.reader.type === "bigwig" || this.defaultVisibilityWindow() <= 0
+        return this.reader.type === "bigwig"
     }
 
     async trackType() {

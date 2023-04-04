@@ -24,7 +24,7 @@ import {
   IGVColor,
   StringUtils
 } from "../node_modules/igv-utils/src/index.js";
-
+import * as TrackUtils from "./util/trackUtils.js"
 import GenomicInterval from "./genome/genomicInterval";
 import featurePacker from "./feature/featurePacker";
 import FeatureSource from "./feature/featureSource";
@@ -38,14 +38,18 @@ const setApiKey = igvxhr.setApiKey;
 embedCss();
 
 function setGoogleOauthToken(accessToken) {
-  return oauth.setToken(accessToken);
+    return igvxhr.setOauthToken(accessToken)
 }
 
 function setOauthToken(accessToken, host) {
-  return oauth.setToken(accessToken, host);
+    return igvxhr.setOauthToken(accessToken, host)
 }
 
+// Backward compatibility
+const oauth = igvxhr.oauth
+
 export default {
+  TrackUtils,
   IGVGraphics,
   MenuUtils,
   DataRangeDialog,
@@ -81,3 +85,5 @@ export default {
   createCheckbox,
   appleCrayonPalette
 };
+
+

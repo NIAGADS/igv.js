@@ -1,50 +1,19 @@
-/*
- * The MIT License (MIT)
- *
- * Copyright (c) 2014 Broad Institute
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
 
 import $ from "./vendor/jquery-3.3.1.slim.js"
-import {Alert, InputDialog} from '../node_modules/igv-ui/dist/igv-ui.js'
-import {
-    BGZip,
-    DOMUtils,
-    FileUtils,
-    GoogleUtils,
-    Icon,
-    igvxhr,
-    StringUtils,
-    URIUtils
-} from "../node_modules/igv-utils/src/index.js"
+import {InputDialog, GenericColorPicker} from '../node_modules/igv-ui/dist/igv-ui.js'
+import {BGZip, FileUtils, igvxhr, StringUtils, URIUtils} from "../node_modules/igv-utils/src/index.js"
+import {DOMUtils, Icon} from "../node_modules/igv-ui/dist/igv-ui.js"
+import Alert from './ui/alert.js'
 import * as TrackUtils from './util/trackUtils.js'
-import TrackView, {igv_axis_column_width, maxViewportContentHeight} from "./trackView.js"
+import TrackView, {igv_axis_column_width} from "./trackView.js"
 import C2S from "./canvas2svg.js"
 import TrackFactory from "./trackFactory.js"
-import ROI from "./roi.js"
+import ROISet from "./roi/ROISet.js"
 import XMLSession from "./session/igvXmlSession.js"
 import GenomeUtils from "./genome/genome.js"
 import loadPlinkFile from "./sampleInformation.js"
-import {adjustReferenceFrame, createReferenceFrameList, createReferenceFrameWithAlignment} from "./referenceFrame.js"
-import {buildOptions, createColumn, doAutoscale, getFilename} from "./util/igvUtils.js"
+import ReferenceFrame, {createReferenceFrameList} from "./referenceFrame.js"
+import {buildOptions, createColumn, doAutoscale, getElementAbsoluteHeight, getFilename} from "./util/igvUtils.js"
 import {createViewport} from "./util/viewportUtils.js"
 import GtexUtils from "./gtex/gtexUtils.js"
 import {defaultSequenceTrackOrder} from './sequenceTrack.js'
@@ -66,7 +35,6 @@ import HtsgetReader from "./htsget/htsgetReader.js"
 import SVGSaveControl from "./ui/svgSaveControl.js"
 import MenuPopup from "./ui/menuPopup.js"
 import {viewportColumnManager} from './viewportColumnManager.js'
-import GenericColorPicker from './ui/genericColorPicker.js'
 import ViewportCenterLine from './ui/viewportCenterLine.js'
 import IdeogramTrack from "./ideogramTrack.js"
 import RulerTrack from "./rulerTrack.js"
@@ -74,6 +42,11 @@ import GtexSelection from "./gtex/gtexSelection.js"
 import CircularViewControl from "./ui/circularViewControl.js"
 import {createCircularView, makeCircViewChromosomes} from "./jbrowse/circularViewUtils.js"
 import CustomButton from "./ui/customButton.js"
+import ROIManager from './roi/ROIManager.js'
+import ROITable from './roi/ROITable.js'
+import ROIMenu from './roi/ROIMenu.js'
+import TrackROISet from "./roi/trackROISet.js"
+import ROITableControl from './ui/roiTableControl.js'
 
 // css - $igv-scrollbar-outer-width: 14px;
 const igv_scrollbar_outer_width = 14
@@ -103,7 +76,7 @@ class Browser {
         this.root = DOMUtils.div({class: 'igv-container'})
         parentDiv.appendChild(this.root)
 
-        Alert.init(this.root)
+        this.alert = new Alert(this.root)
 
         this.columnContainer = DOMUtils.div({class: 'igv-column-container'})
         this.root.appendChild(this.columnContainer)
@@ -144,6 +117,9 @@ class Browser {
         }
 
         this.trackLabelsVisible = config.showTrackLabels
+
+        this.roiTableVisible = config.showROITable
+        this.showROITableButton = config.showROITableButton
 
         this.isCenterLineVisible = config.showCenterGuide
 
@@ -254,14 +230,17 @@ class Browser {
         this.setTrackLabelVisibility(config.showTrackLabels)
         this.trackLabelControl = new TrackLabelControl($toggle_button_container.get(0), this)
 
+        // ROI Control
+        this.roiTableControl = new ROITableControl($toggle_button_container.get(0), this)
+
         this.sampleNameControl = new SampleNameControl($toggle_button_container.get(0), this)
 
         if (true === config.showSVGButton) {
             this.svgSaveControl = new SVGSaveControl($toggle_button_container.get(0), this)
         }
 
-        if(config.customButtons) {
-            for(let b of config.customButtons) {
+        if (config.customButtons) {
+            for (let b of config.customButtons) {
                 new CustomButton($toggle_button_container.get(0), this, b)
             }
         }
@@ -275,7 +254,7 @@ class Browser {
         this.inputDialog = new InputDialog(this.root)
         this.inputDialog.container.id = `igv-input-dialog-${DOMUtils.guid()}`
 
-        this.dataRangeDialog = new DataRangeDialog($(this.root))
+        this.dataRangeDialog = new DataRangeDialog(this, $(this.root))
         this.dataRangeDialog.$container.get(0).id = `igv-data-range-dialog-${DOMUtils.guid()}`
 
         this.genericColorPicker = new GenericColorPicker({parent: this.columnContainer, width: 432})
@@ -313,16 +292,33 @@ class Browser {
     };
 
     /**
+     * PUBLIC API FUNCTION
+     *
+     * Return the current genomic region as a locus string, or array of locus strings if in multi-locus view
+     * @returns {string|*[]|*}
+     */
+    currentLoci() {
+        const noCommaLocusString = (rf) => `${rf.chr}:${rf.start + 1}-${rf.end}`
+        if (undefined === this.referenceFrameList || 0 === this.referenceFrameList.length) {
+            return ""
+        } else if (1 === this.referenceFrameList.length) {
+            return noCommaLocusString(this.referenceFrameList[0])
+        } else {
+            return this.referenceFrameList.map(rf => noCommaLocusString(rf))
+        }
+    }
+
+    /**
      * Render browse display as SVG
      * @returns {string}
      */
     toSVG() {
 
-        let {x, y, width, height} = this.columnContainer.getBoundingClientRect()
+        const {y, width, height} = this.columnContainer.getBoundingClientRect()
 
         const h_render = 8000
 
-        let context = new C2S(
+        const config =
             {
 
                 width,
@@ -340,15 +336,14 @@ class Browser {
                         height: h_render
                     }
 
-            })
+            }
 
-        const dx = x
+        const context = new C2S(config)
 
         // tracks -> SVG
         for (let trackView of this.trackViews) {
             trackView.renderSVGContext(context, {deltaX: 0, deltaY: -y})
         }
-
         // reset height to trim away unneeded svg canvas real estate. Yes, a bit of a hack.
         context.setHeight(height)
 
@@ -388,7 +383,9 @@ class Browser {
      */
     async loadSession(options) {
 
-        this.roi = []
+        // TODO: depricated
+        this.roiSets = []
+
         let session
         if (options.url || options.file) {
             session = await loadSessionFile(options)
@@ -424,7 +421,6 @@ class Browser {
                     return undefined
                 }
             }
-
         }
     }
 
@@ -461,15 +457,31 @@ class Browser {
         // Track gear column
         createColumn(this.columnContainer, 'igv-gear-menu-column')
 
-        const genomeConfig = await GenomeUtils.expandReference(session.reference || session.genome)
+        const genomeOrReference = session.reference || session.genome
+        if(!genomeOrReference) {
+            console.warn("No genome or reference object specified")
+            return;
+        }
+        const genomeConfig = await GenomeUtils.expandReference(this.alert, genomeOrReference)
+
+
         await this.loadReference(genomeConfig, session.locus)
 
         this.centerLineList = this.createCenterLineList(this.columnContainer)
 
         // Create ideogram and ruler track.  Really this belongs in browser initialization, but creation is
         // deferred because ideogram and ruler are treated as "tracks", and tracks require a reference frame
+        let ideogramHeight = 0
         if (false !== session.showIdeogram) {
-            this.trackViews.push(new TrackView(this, this.columnContainer, new IdeogramTrack(this)))
+
+            const track = new IdeogramTrack(this)
+            track.id = 'ideogram'
+
+            const trackView = new TrackView(this, this.columnContainer, track)
+            const {$viewport} = trackView.viewports[0]
+            ideogramHeight = getElementAbsoluteHeight($viewport.get(0))
+
+            this.trackViews.push(trackView)
         }
 
         if (false !== session.showRuler) {
@@ -487,19 +499,47 @@ class Browser {
             }
         }
 
-        if (session.roi) {
-            this.roi = []
-            for (let r of session.roi) {
-                this.roi.push(new ROI(r, this.genome))
-            }
+        if (this.roiManager) {
+            this.roiManager.dispose()
         }
+
+        const roiMenu = new ROIMenu(this, this.columnContainer)
+        const roiTableConfig =
+            {
+                browser: this,
+                parent: this.columnContainer,
+                headerTitle: 'Regions of Interest',
+                dismissHandler: () => this.roiTableControl.buttonHandler(false),
+                gotoButtonHandler: ROITable.gotoButtonHandler
+            }
+        if (session.roi) {
+
+            const roiSetList = session.roi.map(c => new ROISet(c, this.genome))
+
+            const named = roiSetList.filter(({name}) => name !== undefined && name.length > 0)
+
+            roiTableConfig.columnFormat = ROITable.getColumnFormatConfiguration(named.length > 0)
+
+            const roiTable = new ROITable(roiTableConfig)
+
+            this.roiManager = new ROIManager(this, roiMenu, roiTable, ideogramHeight, roiSetList)
+        } else {
+
+            roiTableConfig.columnFormat = ROITable.getColumnFormatConfiguration(false)
+
+            const roiTable = new ROITable(roiTableConfig)
+
+            this.roiManager = new ROIManager(this, roiMenu, roiTable, ideogramHeight, undefined)
+        }
+
+        await this.roiManager.initialize()
 
         // Tracks.  Start with genome tracks, if any, then append session tracks
         const genomeTracks = genomeConfig.tracks || []
         const trackConfigurations = session.tracks ? genomeTracks.concat(session.tracks) : genomeTracks
 
-        // Insure that we always have a sequence track
-        const pushSequenceTrack = trackConfigurations.filter(track => track.type === 'sequence').length === 0
+        // Ensure that we always have a sequence track with no explicit URL (=> the reference genome sequence track)
+        const pushSequenceTrack = trackConfigurations.filter(track => 'sequence' === track.type && !track.url && !track.fastaURL).length === 0
         if (pushSequenceTrack /*&& false !== this.config.showSequence*/) {
             trackConfigurations.push({type: "sequence", order: defaultSequenceTrackOrder})
         }
@@ -513,6 +553,11 @@ class Browser {
         }
 
         await this.loadTrackList(trackConfigurations)
+
+        // The ruler and ideogram tracks are not explicitly loaded, but needs updated nonetheless.
+        for (let rtv of this.trackViews.filter((tv) => tv.track.type === 'ruler' || tv.track.type === 'ideogram')) {
+            rtv.updateViews()
+        }
 
         this.updateUIWithReferenceFrameList()
 
@@ -595,7 +640,11 @@ class Browser {
     }
 
     updateNavbarDOMWithGenome(genome) {
-        this.$current_genome.text(genome.id || '')
+
+        // If the genome is defined directly from a fasta file or data url the "id" will be the full url.  Don't display
+        // this.
+        let genomeLabel = (genome.id && genome.id.length < 10 ? genome.id : '')
+        this.$current_genome.text(genomeLabel)
         this.$current_genome.attr('title', genome.id || '')
         this.chromosomeSelectWidget.update(genome)
     }
@@ -609,7 +658,7 @@ class Browser {
      */
     async loadGenome(idOrConfig) {
 
-        const genomeConfig = await GenomeUtils.expandReference(idOrConfig)
+        const genomeConfig = await GenomeUtils.expandReference(this.alert, idOrConfig)
         await this.loadReference(genomeConfig, undefined)
 
         const tracks = genomeConfig.tracks || []
@@ -652,6 +701,10 @@ class Browser {
         toggleTrackLabels(this.trackViews, isVisible)
     }
 
+    setROITableVisibility(isVisible) {
+        true === isVisible ? this.roiManager.presentTable() : this.roiManager.dismissTable()
+    }
+
     // cursor guide
     setCursorGuideVisibility(cursorGuideVisible) {
 
@@ -690,87 +743,58 @@ class Browser {
 
     }
 
+    /**
+     * Public API function. Load a list of tracks.
+     *
+     * @param configList  Array of track configurations
+     * @returns {Promise<*>}  Promise for track objects
+     */
     async loadTrackList(configList) {
 
-        try {
-            const promises = []
-            for (let config of configList) {
-                promises.push(this.loadTrack(config, false))
-            }
+        const promises = []
+        for (let config of configList) {
+            promises.push(this._loadTrack(config))
+        }
 
-            const loadedTracks = await Promise.all(promises)
-            const groupAutoscaleViews = this.trackViews.filter(function (trackView) {
-                return trackView.track.autoscaleGroup
-            })
-            if (groupAutoscaleViews.length > 0) {
-                this.updateViews(groupAutoscaleViews)
-            }
-            return loadedTracks
-        } finally {
-            await this.resize()
+        const loadedTracks = await Promise.all(promises)
+        const groupAutoscaleViews = this.trackViews.filter(function (trackView) {
+            return trackView.track.autoscaleGroup
+        })
+        if (groupAutoscaleViews.length > 0) {
+            this.updateViews()
         }
-    }
-
-    async loadROI(config) {
-        if (!this.roi) {
-            this.roi = []
-        }
-        if (Array.isArray(config)) {
-            for (let c of config) {
-                this.roi.push(new ROI(c, this.genome))
-            }
-        } else {
-            this.roi.push(new ROI(config, this.genome))
-        }
-        await this.updateViews(true)
-    }
-
-    removeROI(roiToRemove) {
-        for (let i = 0; i < this.roi.length; i++) {
-            if (this.roi[i].name === roiToRemove.name) {
-                this.roi.splice(i, 1)
-                break
-            }
-        }
-        for (let tv of this.trackViews) {
-            tv.updateViews(true)
-        }
-    }
-
-    clearROIs() {
-        this.roi = []
-        for (let tv of this.trackViews) {
-            tv.updateViews(true)
-        }
-    }
-
-    getRulerTrackView() {
-        const list = this.trackViews.filter(({track}) => 'ruler' === track.id)
-        return list.length > 0 ? list[0] : undefined
+        return loadedTracks
     }
 
     /**
-     * Return a promise to load a track.
+     * Public API function
      *
-     * Each track is associated with the following DOM elements
+     * Load an individual track.  If part of an autoscale group force a general update
      *
-     *      leftHandGutter  - div on the left for track controls and legend
-     *      contentDiv  - a div element wrapping all the track content.  Height can be > viewportDiv height
-     *      viewportDiv - a div element through which the track is viewed.  This might have a vertical scrollbar
-     *      canvas     - canvas element upon which the track is drawn.  Child of contentDiv
-     *
-     * The width of all elements should be equal.  Height of the viewportDiv is controlled by the user, but never
-     * greater than the contentDiv height.   Height of contentDiv and canvas are equal, and governed by the data
-     * loaded.
-     *
+     * @param config  A track configuration
+     * @returns {Promise<*>}  Promise for track object
+     */
+    async loadTrack(config) {
+
+        const newTrack = this._loadTrack(config)
+
+        if (config.autoscaleGroup) {
+            // Await newTrack load and update all views
+            await newTrack
+            this.updateViews()
+        }
+
+        return newTrack
+    }
+
+    /**
+     * Return a promise to load a track.   Private function used by loadTrack() and loadTrackList()
      *
      * @param config
-     * @param doResize - undefined by default
      * @returns {*}
      */
 
-    async loadTrack(config, doResize) {
-
+    async _loadTrack(config) {
 
         // config might be json
         if (StringUtils.isString(config)) {
@@ -782,8 +806,7 @@ class Browser {
             const newTrack = await this.createTrack(config)
 
             if (undefined === newTrack) {
-                Alert.presentAlert(new Error(`Unknown file type: ${config.url || config}`), undefined)
-                return newTrack
+                return
             }
 
             // Set order field of track here.  Otherwise track order might get shuffled during asynchronous load
@@ -836,15 +859,56 @@ class Browser {
                 msg = httpMessages[msg]
             }
             msg += (": " + config.url)
-            Alert.presentAlert(new Error(msg), undefined)
-        } finally {
-            // TODO: If loadTrack() is called individually - not via loadTrackList() - call this.resize()
-            if (false === doResize) {
-                // do nothing
-            } else {
-                await this.resize()
-            }
+            this.alert.present(new Error(msg), undefined)
         }
+    }
+
+    /**
+     * Public API function - load a region of interest
+     *
+     * @param config  A "track" configuration object, or array of objects,  of type == "annotation" (bed, gff, etc)
+     *
+     * @returns {Promise<void>}
+     */
+    async loadROI(config) {
+        await this.roiManager.loadROI(config, this.genome)
+    }
+
+    /**
+     * Public API function - clear all regions of interest (ROI), including preloaded and user-defined ROIs
+     */
+    clearROIs() {
+        this.roiManager.clearROIs()
+    }
+
+    /**
+     * Public API function. Return a promise for the list of user-defined regions-of-interest
+     */
+    async getUserDefinedROIs() {
+
+        if (this.roiManager) {
+
+            const set = await this.roiManager.getUserDefinedROISet()
+            if (undefined === set) {
+                return []
+            }
+
+            const featureHash = await set.getAllFeatures()
+            const featureList = []
+            for (let value of Object.values(featureHash)) {
+                featureList.push(...value)
+            }
+
+            return featureList
+
+        } else {
+            return []
+        }
+    }
+
+    getRulerTrackView() {
+        const list = this.trackViews.filter(({track}) => 'ruler' === track.id)
+        return list.length > 0 ? list[0] : undefined
     }
 
     /**
@@ -855,7 +919,7 @@ class Browser {
     async createTrack(config) {
 
         // Resolve function and promise urls
-        let url = await URIUtils.resolveURL(config.url)
+        let url = await URIUtils.resolveURL(config.url || config.fastaURL)
         if (StringUtils.isString(url)) {
             url = url.trim()
         }
@@ -863,15 +927,25 @@ class Browser {
         if (url) {
             if (config.format) {
                 config.format = config.format.toLowerCase()
+            } else if (config.fastaURL) {
+                config.format = "fasta"  // by definition
             } else {
                 let filename = config.filename
                 if (!filename) {
                     filename = await getFilename(url)
                 }
-                config.format = TrackUtils.inferFileFormat(filename)
-                if (!config.format && (config.sourceType === undefined || config.sourceType === "htsget")) {
-                    // Check for htsget URL.  This is a longshot
-                    await HtsgetReader.inferFormat(config)
+
+                const format = TrackUtils.inferFileFormat(filename)
+
+                if ("tsv" === format) {
+                    config.format = await TrackUtils.inferFileFormatFromHeader(config)
+                } else if (format) {
+                    config.format = format
+                } else {
+                    if (config.sourceType === "htsget") {
+                        // Check for htsget URL.  This is a longshot
+                        await HtsgetReader.inferFormat(config)
+                    }
                 }
             }
         }
@@ -909,15 +983,16 @@ class Browser {
         }
 
         const track = TrackFactory.getTrack(type, config, this)
-        if (track && config.roi) {
-            track.roi = []
-            for (let r of config.roi) {
-                track.roi.push(new ROI(r, this.genome))
+        if (undefined === track) {
+            this.alert.present(new Error(`Error creating track.  Could not determine track type for file: ${config.url || config}`), undefined)
+        } else {
+
+            if (config.roi && config.roi.length > 0) {
+                track.roiSets = config.roi.map(r => new TrackROISet(r, this.genome))
             }
+
+            return track
         }
-
-        return track
-
     }
 
 
@@ -985,6 +1060,14 @@ class Browser {
         return this.trackViews.filter(tv => tv.track && tv.track.name).map(tv => tv.track.name)
     }
 
+    /**
+     * NOTE: Public API function
+     *
+     * Remove all tracks matching the given name.  Usually this will be a single track, but there is no
+     * guarantee names are unique
+     *
+     * @param name
+     */
     removeTrackByName(name) {
         const copy = this.trackViews.slice()
         for (let trackView of copy) {
@@ -994,12 +1077,30 @@ class Browser {
         }
     }
 
+    /**
+     * NOTE: Public API function
+     *
+     * Remove the given track.  If it has already been removed this is a no-op.
+     *
+     * @param track
+     */
     removeTrack(track) {
+        for (let trackView of this.trackViews) {
+            if (track === trackView.track) {
+                this._removeTrack(trackView.track)
+                break
+            }
+        }
+    }
 
+    _removeTrack(track) {
+        if (track.disposed) return
         this.trackViews.splice(this.trackViews.indexOf(track.trackView), 1)
         this.fireEvent('trackremoved', [track])
         this.fireEvent('trackorderchanged', [this.getTrackOrder()])
-        track.trackView.dispose()
+        if (track.trackView) {
+            track.trackView.dispose()
+        }
     }
 
     /**
@@ -1051,7 +1152,16 @@ class Browser {
 
     }
 
+    /**
+     * API function to signal that this browser visibility has changed, e.g. from hiding/showing in a tab interface.
+     *
+     * @returns {Promise<void>}
+     */
     async visibilityChange() {
+        this.layoutChange()
+    }
+
+    async layoutChange() {
 
         const status = this.referenceFrameList.find(referenceFrame => referenceFrame.bpPerPixel < 0)
 
@@ -1067,44 +1177,11 @@ class Browser {
             this.navbarManager.navbarDidResize(this.$navigation.width(), isWGV)
         }
 
-        await this.resize()
+        resize.call(this)
+        await this.updateViews()
     }
 
-    async resize() {
-
-        const viewportWidth = this.calculateViewportWidth(this.referenceFrameList.length)
-
-        for (let referenceFrame of this.referenceFrameList) {
-
-            const index = this.referenceFrameList.indexOf(referenceFrame)
-
-            const {chr, genome} = referenceFrame
-
-            const {bpLength} = genome.getChromosome(referenceFrame.chr)
-
-            const viewportWidthBP = referenceFrame.toBP(viewportWidth)
-
-            // viewportWidthBP > bpLength occurs when locus is full chromosome and user widens browser
-            if (GenomeUtils.isWholeGenomeView(chr) || viewportWidthBP > bpLength) {
-                // console.log(`${ Date.now() } Recalc referenceFrame(${ index }) bpp. viewport ${ StringUtils.numberFormatter(viewportWidthBP) } > ${ StringUtils.numberFormatter(bpLength) }.`)
-                referenceFrame.bpPerPixel = bpLength / viewportWidth
-            } else {
-                // console.log(`${ Date.now() } Recalc referenceFrame(${ index }) end.`)
-                referenceFrame.end = referenceFrame.start + referenceFrame.toBP(viewportWidth)
-            }
-
-            for (let {viewports} of this.trackViews) {
-                viewports[index].setWidth(viewportWidth)
-            }
-
-        }
-
-        await this.updateViews(true)
-
-        this.updateUIWithReferenceFrameList()
-    }
-
-    async updateViews(force) {
+    async updateViews() {
 
         const trackViews = this.trackViews
 
@@ -1117,7 +1194,7 @@ class Browser {
         // Don't autoscale while dragging.
         if (this.dragObject) {
             for (let trackView of trackViews) {
-                await trackView.updateViews(force)
+                await trackView.updateViews()
             }
         } else {
             // Group autoscale
@@ -1162,19 +1239,25 @@ class Browser {
                     for (let trackView of groupTrackViews) {
                         trackView.track.dataRange = dataRange
                         trackView.track.autoscale = false
-                        p.push(trackView.updateViews(force))
+                        p.push(trackView.updateViews())
                     }
                     await Promise.all(p)
                 }
 
             }
 
-            await Promise.all(otherTracks.map(tv => tv.updateViews(force)))
+            await Promise.all(otherTracks.map(tv => tv.updateViews()))
             // for (let trackView of otherTracks) {
             //     await trackView.updateViews(force);
             // }
         }
 
+    }
+
+    repaintViews() {
+        for (let trackView of this.trackViews) {
+            trackView.repaintViews()
+        }
     }
 
     updateLocusSearchWidget() {
@@ -1241,49 +1324,50 @@ class Browser {
         }
     }
 
-    async presentMultiLocusPanel(alignment, referenceFrameLeft) {
+    /**
+     * Add a new multi-locus panel for the specified region
+     * @param chr
+     * @param start
+     * @param end
+     * @param referenceFrameLeft - optional, if supplied new panel should be placed to the immediate right
+     */
+    async addMultiLocusPanel(chr, start, end, referenceFrameLeft) {
 
         // account for reduced viewport width as a result of adding right mate pair panel
         const viewportWidth = this.calculateViewportWidth(1 + this.referenceFrameList.length)
-
         const scaleFactor = this.calculateViewportWidth(this.referenceFrameList.length) / this.calculateViewportWidth(1 + this.referenceFrameList.length)
-        adjustReferenceFrame(scaleFactor, referenceFrameLeft, viewportWidth, alignment.start, alignment.lengthOnRef)
+        for (let refFrame of this.referenceFrameList) {
+            refFrame.bpPerPixel *= scaleFactor
+        }
 
-        // create right mate pair reference frame
-        const mateChrName = this.genome.getChromosomeName(alignment.mate.chr)
+        const bpp = (end - start) / viewportWidth
+        const newReferenceFrame = new ReferenceFrame(this.genome, chr, start, end, bpp)
+        const indexLeft = referenceFrameLeft ? this.referenceFrameList.indexOf(referenceFrameLeft) : this.referenceFrameList.length - 1
+        const indexRight = 1 + indexLeft
 
-        const referenceFrameRight = createReferenceFrameWithAlignment(this.genome, mateChrName, referenceFrameLeft.bpPerPixel, viewportWidth, alignment.mate.position, alignment.lengthOnRef)
-
-        // add right mate panel beside left mate panel
-        const indexLeft = this.referenceFrameList.indexOf(referenceFrameLeft)
-        const indexRight = 1 + (this.referenceFrameList.indexOf(referenceFrameLeft))
-
+        // TODO -- this is really ugly
         const {$viewport} = this.trackViews[0].viewports[indexLeft]
         const viewportColumn = viewportColumnManager.insertAfter($viewport.get(0).parentElement)
 
         if (indexRight === this.referenceFrameList.length) {
-
-            this.referenceFrameList.push(referenceFrameRight)
-
+            this.referenceFrameList.push(newReferenceFrame)
             for (let trackView of this.trackViews) {
-                const viewport = createViewport(trackView, viewportColumn, referenceFrameRight)
+                const viewport = createViewport(trackView, viewportColumn, newReferenceFrame)
                 trackView.viewports.push(viewport)
             }
-
         } else {
-
-            this.referenceFrameList.splice(indexRight, 0, referenceFrameRight)
-
+            this.referenceFrameList.splice(indexRight, 0, newReferenceFrame)
             for (let trackView of this.trackViews) {
-                const viewport = createViewport(trackView, viewportColumn, referenceFrameRight)
+                const viewport = createViewport(trackView, viewportColumn, newReferenceFrame)
                 trackView.viewports.splice(indexRight, 0, viewport)
             }
-
         }
+
 
         this.centerLineList = this.createCenterLineList(this.columnContainer)
 
-        await this.resize()
+        resize.call(this)
+        await this.updateViews(true)
     }
 
     async removeMultiLocusPanel(referenceFrame) {
@@ -1312,7 +1396,13 @@ class Browser {
 
     }
 
-    async selectMultiLocusPanel(referenceFrame) {
+    /**
+     * Goto the locus represented by the selected referenceFrame, discarding all other panels
+     *
+     * @param referenceFrame
+     * @returns {Promise<void>}
+     */
+    async gotoMultilocusPanel(referenceFrame) {
 
         const referenceFrameIndex = this.referenceFrameList.indexOf(referenceFrame)
 
@@ -1368,7 +1458,7 @@ class Browser {
 
         this.updateUIWithReferenceFrameList()
 
-        await this.updateViews(true)
+        await this.updateViews()
 
     }
 
@@ -1391,7 +1481,7 @@ class Browser {
     async doSearch(string, init) {
         const success = await this.search(string, init)
         if (!success) {
-            Alert.presentAlert(new Error(`Unrecognized locus: <b> ${string} </b>`))
+            this.alert.present(new Error(`Unrecognized locus: <b> ${string} </b>`))
         }
         return success
     }
@@ -1411,7 +1501,7 @@ class Browser {
         if (loci && loci.length > 0) {
 
             // create reference frame list based on search loci
-            this.referenceFrameList = createReferenceFrameList(loci, this.genome, this.flanking, this.minimumBases(), this.calculateViewportWidth(loci.length))
+            this.referenceFrameList = createReferenceFrameList(loci, this.genome, this.flanking, this.minimumBases(), this.calculateViewportWidth(loci.length), this.isSoftclipped())
 
             // discard viewport DOM elements
             for (let trackView of this.trackViews) {
@@ -1514,6 +1604,10 @@ class Browser {
         }
     }
 
+    /**
+     * Return a json-like object (note not a json string) representing the current state.
+     *
+     */
     toJSON() {
 
         const json = {
@@ -1528,16 +1622,16 @@ class Browser {
         }
 
         json["reference"] = this.genome.toJSON()
-        if (FileUtils.isFilePath(json.reference.fastaURL)) {
+        if (json.reference.fastaURL instanceof File) {   // Test specifically for File.  Other types of File-like objects might be savable) {
             throw new Error(`Error. Sessions cannot include local file references ${json.reference.fastaURL.name}.`)
-        } else if (FileUtils.isFilePath(json.reference.indexURL)) {
+        } else if (json.reference.indexURL instanceof File) {   // Test specifically for File.  Other types of File-like objects might be savable) {
             throw new Error(`Error. Sessions cannot include local file references ${json.reference.indexURL.name}.`)
         }
 
         // Build locus array (multi-locus view).  Use the first track to extract the loci, any track could be used.
         const locus = []
         const gtexSelections = {}
-        let hasGtexSelections = false;
+        let hasGtexSelections = false
         let anyTrackView = this.trackViews[0]
         for (let {referenceFrame} of anyTrackView.viewports) {
             const locusString = referenceFrame.getLocusString()
@@ -1548,13 +1642,15 @@ class Browser {
                     snp: referenceFrame.selection.snp
                 }
                 gtexSelections[locusString] = selection
-                hasGtexSelections = true;
+                hasGtexSelections = true
             }
         }
         json["locus"] = locus.length === 1 ? locus[0] : locus
         if (hasGtexSelections) {
             json["gtexSelections"] = gtexSelections
         }
+
+        json["roi"] = this.roiManager.toJSON()
 
         const trackJson = []
         const errors = []
@@ -1591,7 +1687,6 @@ class Browser {
         }
 
 
-
         json["tracks"] = trackJson
 
         return json        // This is an object, not a json string
@@ -1608,16 +1703,6 @@ class Browser {
         const idx = path.indexOf("?")
         const surl = (idx > 0 ? path.substring(0, idx) : path) + "?sessionURL=blob:" + this.compressedSession()
         return surl
-    }
-
-    currentLoci() {
-        const loci = []
-        const anyTrackView = this.trackViews[0]
-        for (let {referenceFrame} of anyTrackView.viewports) {
-            const locusString = referenceFrame.getLocusString()
-            loci.push(locusString)
-        }
-        return loci
     }
 
     /**
@@ -1649,20 +1734,38 @@ class Browser {
         this.isScrolling = false
         this.vpMouseDown = undefined
 
-
         if (dragObject && dragObject.viewport.referenceFrame.start !== dragObject.start) {
             this.updateViews()
             this.fireEvent('trackdragend')
         }
-
     }
 
+    isTrackPanning() {
+        return this.dragObject
+    }
+
+    isSoftclipped() {
+        const result = this.trackViews.find(tv => tv.track.showSoftClips === true)
+        return result !== undefined
+    }
+
+
+    /**
+     * Track drag here refers to vertical dragging to reorder tracks, not horizontal panning.
+     *
+     * @param trackView
+     */
     startTrackDrag(trackView) {
 
         this.dragTrack = trackView
 
     }
 
+    /**
+     * Track drag here refers to vertical dragging to reorder tracks, not horizontal panning.
+     *
+     * @param dragDestination
+     */
     updateTrackDrag(dragDestination) {
 
         if (dragDestination && this.dragTrack) {
@@ -1709,6 +1812,9 @@ class Browser {
         }
     }
 
+    /**
+     * End vertical dragging of tracks (i.e. track re-order, not horizontal panning of data)
+     */
     endTrackDrag() {
         if (this.dragTrack) {
             // this.dragTrack.$trackDragScrim.hide();
@@ -1737,12 +1843,9 @@ class Browser {
     }
 
     addWindowResizeHandler() {
-        this.boundWindowResizeHandler = windowResizeHandler.bind(this)
+        // Create a copy of the prototype "resize" function bound to this instance.  Neccessary to support removing.
+        this.boundWindowResizeHandler = resize.bind(this)
         window.addEventListener('resize', this.boundWindowResizeHandler)
-
-        function windowResizeHandler() {
-            this.resize()
-        }
     }
 
     removeWindowResizeHandler() {
@@ -1793,12 +1896,6 @@ class Browser {
         this.columnContainer.removeEventListener('touchend', this.boundColumnContainerTouchEndHandler)
     }
 
-    async getDriveFileInfo(googleDriveURL) {
-        const id = GoogleUtils.getGoogleDriveFileID(googleDriveURL)
-        const endPoint = "https://www.googleapis.com/drive/v3/files/" + id + "?supportsTeamDrives=true"
-        return igvxhr.loadJson(endPoint, buildOptions({}))
-    }
-
     static uncompressSession(url) {
 
         let bytes
@@ -1818,6 +1915,7 @@ class Browser {
     }
 
     createCircularView(container, show) {
+        show = show === true   // convert undefined to boolean
         this.circularView = createCircularView(container, this)
         this.circularViewControl = new CircularViewControl(this.$toggle_button_container.get(0), this)
         this.circularView.setAssembly({
@@ -1825,8 +1923,8 @@ class Browser {
             id: this.genome.id,
             chromosomes: makeCircViewChromosomes(this.genome)
         })
-        this.circularViewVisible = show === true
-
+        this.circularViewVisible = show
+        return this.circularView
     }
 
     get circularViewVisible() {
@@ -1840,6 +1938,50 @@ class Browser {
         }
     }
 }
+
+/**
+ * Function called win window is resized, or visibility changed (e.g. "show" from a tab).  This is a function rather
+ * than class method because it needs to be copied and bound to specific instances of browser to support listener
+ * removal
+ *
+ * @returns {Promise<void>}
+ */
+async function resize() {
+
+    const viewportWidth = this.calculateViewportWidth(this.referenceFrameList.length)
+
+    for (let referenceFrame of this.referenceFrameList) {
+
+        const index = this.referenceFrameList.indexOf(referenceFrame)
+
+        const {chr, genome} = referenceFrame
+
+        const {bpLength} = genome.getChromosome(referenceFrame.chr)
+
+        const viewportWidthBP = referenceFrame.toBP(viewportWidth)
+
+        // viewportWidthBP > bpLength occurs when locus is full chromosome and user widens browser
+        if (GenomeUtils.isWholeGenomeView(chr) || viewportWidthBP > bpLength) {
+            // console.log(`${ Date.now() } Recalc referenceFrame(${ index }) bpp. viewport ${ StringUtils.numberFormatter(viewportWidthBP) } > ${ StringUtils.numberFormatter(bpLength) }.`)
+            referenceFrame.bpPerPixel = bpLength / viewportWidth
+        } else {
+            // console.log(`${ Date.now() } Recalc referenceFrame(${ index }) end.`)
+            referenceFrame.end = referenceFrame.start + referenceFrame.toBP(viewportWidth)
+        }
+
+        for (let {viewports} of this.trackViews) {
+            viewports[index].setWidth(viewportWidth)
+        }
+
+    }
+
+    this.updateUIWithReferenceFrameList()
+
+    //TODO -- update view only if needed.  Reducing size never needed.  Increasing size maybe
+
+    await this.updateViews(true)
+}
+
 
 function handleMouseMove(e) {
 
@@ -1862,16 +2004,19 @@ function handleMouseMove(e) {
             } else {
                 if (this.vpMouseDown.mouseDownY &&
                     Math.abs(y - this.vpMouseDown.mouseDownY) > this.constants.scrollThreshold) {
+                    // Scrolling => dragging track vertically
                     this.isScrolling = true
                     const viewportHeight = viewport.$viewport.height()
-                    const contentHeight = maxViewportContentHeight(viewport.trackView.viewports)
+                    const contentHeight = viewport.trackView.maxViewportContentHeight()
                     this.vpMouseDown.r = viewportHeight / contentHeight
                 }
             }
         }
 
         if (this.dragObject) {
-            const viewChanged = referenceFrame.shiftPixels(this.vpMouseDown.lastMouseX - x, viewport.$viewport.width())
+            const clampDrag = !this.isSoftclipped()
+            let deltaX = this.vpMouseDown.lastMouseX - x
+            const viewChanged = referenceFrame.shiftPixels(deltaX, viewport.$viewport.width(), clampDrag)
             if (viewChanged) {
                 this.updateViews()
             }

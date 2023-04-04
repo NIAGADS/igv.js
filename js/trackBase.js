@@ -26,6 +26,16 @@
 import {isSimpleType} from "./util/igvUtils.js"
 import {FeatureUtils, FileUtils, StringUtils} from "../node_modules/igv-utils/src/index.js"
 
+const DEFAULT_COLOR = 'rgb(150,150,150)'
+
+const fixColor = (colorString) => {
+    if (StringUtils.isString(colorString)) {
+        return (colorString.indexOf(",") > 0 && !(colorString.startsWith("rgb(") || colorString.startsWith("rgba("))) ?
+            `rgb(${colorString})` : colorString
+    } else {
+        return colorString
+    }
+}
 
 /**
  * A collection of properties and methods shared by all (or most) track types.
@@ -48,6 +58,7 @@ class TrackBase {
      * @param config
      */
     init(config) {
+
         if (config.displayMode) {
             config.displayMode = config.displayMode.toUpperCase()
         }
@@ -70,8 +81,8 @@ class TrackBase {
 
         this.order = config.order
 
-        this.color = config.color
-        this.altColor = config.altColor
+        if (config.color) this.color = fixColor(config.color)
+        if (config.altColor) this.altColor = fixColor(config.altColor)
         if ("civic-ws" === config.sourceType) {    // Ugly proxy for specialized track type
             this.defaultColor = "rgb(155,20,20)"
         } else {
@@ -102,6 +113,14 @@ class TrackBase {
                 this.description = () => config.description
             }
         }
+
+        // Support for mouse hover text.  This can be expensive, off by default.
+        // this.hoverText = function(clickState) => return tool tip text
+        if (config.hoverTextFields) {
+            this.hoverText = hoverText.bind(this)
+        } else if (typeof this.config.hoverText === 'function') {
+            this.hoverText = this.config.hoverText
+        }
     }
 
     get name() {
@@ -122,6 +141,18 @@ class TrackBase {
      */
     updateConfig(config) {
         this.init(config)
+    }
+
+    clearCachedFeatures() {
+        if (this.trackView) {
+            this.trackView.clearCachedFeatures()
+        }
+    }
+
+    updateViews() {
+        if (this.trackView) {
+            this.trackView.updateViews()
+        }
     }
 
     /**
@@ -177,8 +208,8 @@ class TrackBase {
         return state
     }
 
-    supportsWholeGenome() {
-        return false
+    get supportsWholeGenome() {
+        return this.config.supportsWholeGenome === true
     }
 
     /**
@@ -202,6 +233,8 @@ class TrackBase {
      * @param properties
      */
     setTrackProperties(properties) {
+
+        if (this.disposed) return   // This track was removed during async load
 
         const tracklineConfg = {}
         let tokens
@@ -304,20 +337,20 @@ class TrackBase {
     }
 
     /**
-     * Return the features clicked over.  Default implementation assumes a single row of features and only considers
+     * Return the features clicked over.  Default implementation assumes an array of features and only considers
      * the genomic location.   Overriden by most subclasses.
      *
      * @param clickState
      * @param features
      * @returns {[]|*[]}
      */
-    clickedFeatures(clickState, features) {
+    clickedFeatures(clickState) {
 
         // We use the cached features rather than method to avoid async load.  If the
         // feature is not already loaded this won't work,  but the user wouldn't be mousing over it either.
-        if (!features) features = clickState.viewport.getCachedFeatures()
+        const features = clickState.viewport.cachedFeatures
 
-        if (!features || features.length === 0) {
+        if (!features || !Array.isArray(features) || features.length === 0) {
             return []
         }
 
@@ -415,6 +448,7 @@ class TrackBase {
 
     }
 
+
     /**
      * Default track description -- displayed on click of track label.  This can be overriden in the track
      * configuration, or in subclasses.
@@ -458,6 +492,29 @@ class TrackBase {
         return str
     }
 
+    /**
+     * Return color for a specific feature of this track.  This default implementation is overriden by subclasses*
+     * @param f
+     * @returns {*|string|string}
+     */
+    getColorForFeature(f) {
+       return (typeof this.color === "function") ? this.color(feature) : this.color || DEFAULT_COLOR
+    }
+
+    /**
+     * Track has been permanently removed.  Release resources and other cleanup
+     */
+    dispose() {
+
+        this.disposed = true
+
+        // This should not be neccessary, but in case there is some unknown reference holding onto this track object,
+        // for example in client code, release any resources here.
+        for (let key of Object.keys(this)) {
+            this[key] = undefined
+        }
+    }
+
     static getCravatLink(chr, position, ref, alt, genomeID) {
 
         if ("hg38" === genomeID || "GRCh38" === genomeID) {
@@ -472,6 +529,38 @@ class TrackBase {
     }
 }
 
+function hoverText(clickState) {
+
+    if (!this.hoverTextFields) return
+
+    const features = this.clickedFeatures(clickState)
+
+    if (features && features.length > 0) {
+        let str = ""
+        for (let i = 0; i < features.length; i++) {
+            if (i === 10) {
+                str += "; ..."
+                break
+            }
+            if (!features[i]) continue
+
+            const f = features[i]._f || features[i]
+            if (str.length > 0) str += "\n"
+
+            str = ""
+            for (let field of this.hoverTextFields) {
+                if (str.length > 0) str += "\n"
+                if (f.hasOwnProperty(field)) {
+                    str += f[field]
+                } else if (typeof f.getAttribute === "function") {
+                    str += f.getAttribute(field)
+                }
+            }
+
+        }
+        return str
+    }
+}
 
 /**
  * Map UCSC track line "type" setting to file format.  In igv.js "type" refers to the track type, not the input file format

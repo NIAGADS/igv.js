@@ -1,4 +1,4 @@
-import {DOMUtils} from '../node_modules/igv-utils/src/index.js'
+import {DOMUtils} from '../node_modules/igv-ui/dist/igv-ui.js'
 import {appleCrayonRGB} from './util/colorPalletes.js'
 
 const maxFontSize = 10
@@ -170,7 +170,7 @@ class SampleNameViewport {
                         for (let {sampleNameViewport} of this.browser.trackViews) {
                             sampleNameViewport.setWidth(this.browser.sampleNameViewportWidth)
                         }
-                        this.browser.resize()
+                        this.browser.layoutChange()
                     }
                 }
 

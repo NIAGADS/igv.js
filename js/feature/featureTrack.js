@@ -1,28 +1,3 @@
-/*
- * The MIT License (MIT)
- *
- * Copyright (c) 2014 Broad Institute
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
-
 import $ from "../vendor/jquery-3.3.1.slim.js"
 import FeatureSource from './featureSource.js'
 import TrackBase from "../trackBase.js"
@@ -35,6 +10,7 @@ import {renderFusionJuncSpan} from "./render/renderFusionJunction.js"
 import {StringUtils} from "../../node_modules/igv-utils/src/index.js"
 import {ColorTable, PaletteColorTable} from "../util/colorPalletes.js"
 import {isSecureContext} from "../util/igvUtils.js"
+import {IGVColor} from "../../node_modules/igv-utils/src/index.js"
 
 
 class FeatureTrack extends TrackBase {
@@ -114,6 +90,7 @@ class FeatureTrack extends TrackBase {
 
         if (typeof this.featureSource.getHeader === "function") {
             this.header = await this.featureSource.getHeader()
+            if (this.disposed) return   // This track was removed during async load
         }
 
         // Set properties from track line
@@ -129,8 +106,16 @@ class FeatureTrack extends TrackBase {
 
     }
 
-    supportsWholeGenome() {
-        return (this.config.indexed === false || !this.config.indexURL) && this.config.supportsWholeGenome !== false
+    get supportsWholeGenome() {
+        if (this.config.supportsWholeGenome !== undefined) {
+            return this.config.supportsWholeGenome
+        } else if (this.featureSource && typeof this.featureSource.supportsWholeGenome === 'function') {
+            return this.featureSource.supportsWholeGenome()
+        } else {
+            if (this.visibilityWindow === undefined && (this.config.indexed === false || !this.config.indexURL)) {
+                return true
+            }
+        }
     }
 
     async getFeatures(chr, start, end, bpPerPixel) {
@@ -185,24 +170,28 @@ class FeatureTrack extends TrackBase {
 
             const rowFeatureCount = []
             options.rowLastX = []
+            options.rowLastLabelX = []
             for (let feature of featureList) {
-                const row = feature.row || 0
-                if (rowFeatureCount[row] === undefined) {
-                    rowFeatureCount[row] = 1
-                } else {
-                    rowFeatureCount[row]++
+                if (feature.start > bpStart && feature.end < bpEnd) {
+                    const row = this.displayMode === "COLLAPSED" ? 0 : feature.row || 0
+                    if (rowFeatureCount[row] === undefined) {
+                        rowFeatureCount[row] = 1
+                    } else {
+                        rowFeatureCount[row]++
+                    }
+                    options.rowLastX[row] = -Number.MAX_SAFE_INTEGER
+                    options.rowLastLabelX[row] = -Number.MAX_SAFE_INTEGER
                 }
-                options.rowLastX[row] = -Number.MAX_SAFE_INTEGER
             }
+            const maxFeatureCount = Math.max(1, Math.max(...rowFeatureCount))
+            const pixelsPerFeature = pixelWidth / maxFeatureCount
 
             let lastPxEnd = []
             for (let feature of featureList) {
                 if (feature.end < bpStart) continue
                 if (feature.start > bpEnd) break
-
                 const row = this.displayMode === 'COLLAPSED' ? 0 : feature.row
-                const featureDensity = pixelWidth / rowFeatureCount[row]
-                options.drawLabel = options.labelAllFeatures || featureDensity > 10
+                options.drawLabel = options.labelAllFeatures || pixelsPerFeature > 10
                 const pxEnd = Math.ceil((feature.end - bpStart) / bpPerPixel)
                 const last = lastPxEnd[row]
                 if (!last || pxEnd > last) {
@@ -216,7 +205,6 @@ class FeatureTrack extends TrackBase {
                         ctx.globalAlpha = 1.0
                     }
                     lastPxEnd[row] = pxEnd
-
                 }
             }
 
@@ -226,10 +214,10 @@ class FeatureTrack extends TrackBase {
 
     };
 
-    clickedFeatures(clickState, features) {
+    clickedFeatures(clickState) {
 
         const y = clickState.y - this.margin
-        const allFeatures = super.clickedFeatures(clickState, features)
+        const allFeatures = super.clickedFeatures(clickState)
 
         let row
         switch (this.displayMode) {
@@ -253,9 +241,8 @@ class FeatureTrack extends TrackBase {
      */
     popupData(clickState, features) {
 
-        features = this.clickedFeatures(clickState, features)
+        if (features === undefined) features = this.clickedFeatures(clickState)
         const genomicLocation = clickState.genomicLocation
-
         const data = []
         for (let feature of features) {
 
@@ -278,20 +265,17 @@ class FeatureTrack extends TrackBase {
                 const infoURL = this.infoURL || this.config.infoURL
                 for (let fd of featureData) {
                     data.push(fd)
-                    if (infoURL) {
-                        if (fd.name &&
-                            fd.name.toLowerCase() === "name" &&
-                            fd.value &&
-                            StringUtils.isString(fd.value) &&
-                            !fd.value.startsWith("<")) {
-
-
-                            const url = this.infoURL || this.config.infoURL
-                            const href = url.replace("$$", feature.name)
-                            data.push({name: "Info", value: `<a target="_blank" href=${href}>${fd.value}</a>`})
-                        }
+                    if (infoURL &&
+                        fd.name &&
+                        fd.name.toLowerCase() === "name" &&
+                        fd.value &&
+                        StringUtils.isString(fd.value) &&
+                        !fd.value.startsWith("<")) {
+                        const href = infoURL.replace("$$", feature.name)
+                        fd.value = `<a target=_blank href=${href}>${fd.value}</a>`
                     }
                 }
+
 
                 //Array.prototype.push.apply(data, featureData);
 
@@ -321,7 +305,7 @@ class FeatureTrack extends TrackBase {
     }
 
     menuItemList() {
-        
+
         const menuItems = []
 
         if (this.render === renderSnp) {
@@ -349,7 +333,7 @@ class FeatureTrack extends TrackBase {
             menuItems.push(
                 {
                     object: $(createCheckbox(lut[displayMode], displayMode === this.displayMode)),
-                    click:  () => {
+                    click: () => {
                         this.displayMode = displayMode
                         this.config.displayMode = displayMode
                         this.trackView.checkContentHeight()
@@ -365,32 +349,58 @@ class FeatureTrack extends TrackBase {
 
     contextMenuItemList(clickState) {
 
-        if (isSecureContext()) {
-            const features = this.clickedFeatures(clickState)
-            if (features.length > 1) {
-                features.sort((a, b) => (a.end - a.start) - (b.end - b.start))
-            }
-            const f = features[0]   // The longest feature
-            if ((f.end - f.start) <= 1000000) {
-                return [
+        const features = this.clickedFeatures(clickState)
+
+        if (undefined === features || 0 === features.length) {
+            return undefined
+        }
+
+        if (features.length > 1) {
+            features.sort((a, b) => (b.end - b.start) - (a.end - a.start))
+        }
+        const f = features[0]   // The shortest clicked feature
+
+        if ((f.end - f.start) <= 1000000) {
+            const list = [{
+                label: 'View feature sequence',
+                click: async () => {
+                    let seq = await this.browser.genome.getSequence(f.chr, f.start, f.end)
+                    if (!seq) {
+                        seq = "Unknown sequence"
+                    } else if (f.strand === '-') {
+                        seq = reverseComplementSequence(seq)
+                    }
+                    this.browser.alert.present(seq)
+
+                }
+            }]
+
+            if (isSecureContext() && navigator.clipboard !== undefined) {
+                list.push(
                     {
                         label: 'Copy feature sequence',
                         click: async () => {
                             let seq = await this.browser.genome.getSequence(f.chr, f.start, f.end)
-                            if (f.strand === '-') {
+                            if (!seq) {
+                                seq = "Unknown sequence"
+                            } else if (f.strand === '-') {
                                 seq = reverseComplementSequence(seq)
                             }
-                            navigator.clipboard.writeText(seq)
+                            try {
+                                await navigator.clipboard.writeText(seq)
+                            } catch (e) {
+                                console.error(e)
+                                this.browser.alert.present(`error copying sequence to clipboard ${e}`)
+                            }
                         }
-                    },
-                    '<hr/>'
-                ]
+                    }
+                )
             }
+            list.push('<hr/>')
+            return list
+        } else {
+            return undefined
         }
-
-        // Either not a secure context (i.e. http: protocol), or feature is too long
-        return undefined
-
     }
 
     description() {
@@ -411,10 +421,56 @@ class FeatureTrack extends TrackBase {
             desc += "</html>"
             return desc
         } else {
-            return super.description();
+            return super.description()
         }
 
     };
+
+    /**
+     * Return color for feature.
+     * @param feature
+     * @returns {string}
+     */
+
+    getColorForFeature(feature) {
+
+        let color
+        if (this.altColor && "-" === feature.strand) {
+            color = (typeof this.altColor === "function") ? this.altColor(feature) : this.altColor
+        } else if (this.color) {
+            color = (typeof this.color === "function") ? this.color(feature) : this.color  // Explicit setting via menu, or possibly track line if !config.color
+        } else if (this.colorBy) {
+            const value = feature.getAttributeValue ?
+                feature.getAttributeValue(this.colorBy) :
+                feature[this.colorBy]
+            color = this.colorTable.getColor(value)
+        } else if (feature.color) {
+            color = feature.color   // Explicit color for feature
+        } else {
+            color = this.defaultColor   // Track default
+        }
+
+        if (feature.alpha && feature.alpha !== 1) {
+            color = IGVColor.addAlpha(color, feature.alpha)
+        } else if (this.useScore && feature.score && !Number.isNaN(feature.score)) {
+            // UCSC useScore option, for scores between 0-1000.  See https://genome.ucsc.edu/goldenPath/help/customTrack.html#TRACK
+            const min = this.config.min ? this.config.min : 0 //getViewLimitMin(track);
+            const max = this.config.max ? this.config.max : 1000 //getViewLimitMax(track);
+            const alpha = getAlpha(min, max, feature.score)
+            feature.alpha = alpha    // Avoid computing again
+            color = IGVColor.addAlpha(color, alpha)
+        }
+
+
+        function getAlpha(min, max, score) {
+            const binWidth = (max - min) / 9
+            const binNumber = Math.floor((score - min) / binWidth)
+            return Math.min(1.0, 0.2 + (binNumber * 0.8) / 9)
+        }
+
+        return color
+    }
+
 
     /**
      * Called when the track is removed.  Do any needed cleanup here

@@ -23,7 +23,6 @@
  * THE SOFTWARE.
  */
 
-import $ from "../vendor/jquery-3.3.1.slim.js"
 import FeatureSource from './featureSource.js'
 import TDFSource from "../tdf/tdfSource.js"
 import TrackBase from "../trackBase.js"
@@ -32,7 +31,6 @@ import IGVGraphics from "../igv-canvas.js"
 import paintAxis from "../util/paintAxis.js"
 import {IGVColor, StringUtils} from "../../node_modules/igv-utils/src/index.js"
 import MenuUtils from "../ui/menuUtils.js"
-import {createCheckbox} from "../igv-icons.js"
 
 const DEFAULT_COLOR = "rgb(150,150,150)"
 
@@ -51,13 +49,14 @@ class WigTrack extends TrackBase {
         this.paintAxis = paintAxis
 
         const format = config.format ? config.format.toLowerCase() : config.format
-        if ("bigwig" === format) {
-            this.flipAxis = config.flipAxis ? config.flipAxis : false
-            this.logScale = config.logScale ? config.logScale : false
+        this.flipAxis = config.flipAxis ? config.flipAxis : false
+        this.logScale = config.logScale ? config.logScale : false
+        if (config.featureSource) {
+            this.featureSource = config.featureSource
+            delete config.featureSource
+        } else if ("bigwig" === format) {
             this.featureSource = new BWSource(config, this.browser.genome)
         } else if ("tdf" === format) {
-            this.flipAxis = config.flipAxis ? config.flipAxis : false
-            this.logScale = config.logScale ? config.logScale : false
             this.featureSource = new TDFSource(config, this.browser.genome)
         } else {
             this.featureSource = FeatureSource(config, this.browser.genome)
@@ -79,6 +78,7 @@ class WigTrack extends TrackBase {
 
     async postInit() {
         const header = await this.getHeader()
+        if (this.disposed) return   // This track was removed during async load
         if (header) this.setTrackProperties(header)
     }
 
@@ -88,6 +88,7 @@ class WigTrack extends TrackBase {
             start,
             end,
             bpPerPixel,
+            visibilityWindow: this.visibilityWindow,
             windowFunction: this.windowFunction
         })
         if (this.normalize && this.featureSource.normalizationFactor) {
@@ -107,9 +108,11 @@ class WigTrack extends TrackBase {
 
     menuItemList() {
         let items = []
+
         if (this.flipAxis !== undefined) {
+            items.push('<hr>')
             items.push({
-                label:"Flip y-axis",
+                label: "Flip y-axis",
                 click: () => {
                     this.flipAxis = !this.flipAxis
                     this.trackView.repaintViews()
@@ -160,16 +163,13 @@ class WigTrack extends TrackBase {
         const pixelWidth = options.pixelWidth
         const pixelHeight = options.pixelHeight
         const bpEnd = bpStart + pixelWidth * bpPerPixel + 1
-        let lastPixelEnd = -1
-        let lastValue = -1
-        let lastNegValue = 1
         const posColor = this.color || DEFAULT_COLOR
 
         let baselineColor
         if (typeof posColor === "string" && posColor.startsWith("rgb(")) {
             baselineColor = IGVColor.addAlpha(posColor, 0.1)
         }
-
+        let lastNegValue = 1
         const scaleFactor = this.getScaleFactor(this.dataRange.min, this.dataRange.max, options.pixelHeight, this.logScale)
         const yScale = (yValue) => this.logScale
             ? this.computeYPixelValueInLogScale(yValue, scaleFactor)
@@ -183,6 +183,8 @@ class WigTrack extends TrackBase {
             // nothing to paint.
             if (this.dataRange.max > this.dataRange.min) {
 
+                let lastPixelEnd = -1
+                let lastY
                 const y0 = yScale(0)
                 for (let f of features) {
 
@@ -197,23 +199,28 @@ class WigTrack extends TrackBase {
                     const rectEnd = Math.ceil((f.end - bpStart) / bpPerPixel)
                     const width = Math.max(1, rectEnd - x)
 
-                    let c = (f.value < 0 && this.altColor) ? this.altColor : posColor
-                    const color = (typeof c === "function") ? c(f.value) : c
+                    const color = this.getColorForFeature(f)
 
                     if (this.graphType === "points") {
                         const pointSize = this.config.pointSize || 3
                         const px = x + width / 2
                         IGVGraphics.fillCircle(ctx, px, y, pointSize / 2, {"fillStyle": color, "strokeStyle": color})
 
-                    } else {
-                        let height = y - y0
-                        const pixelEnd = x + width
-                        if (pixelEnd > lastPixelEnd || (f.value >= 0 && f.value > lastValue) || (f.value < 0 && f.value < lastNegValue)) {
-                            IGVGraphics.fillRect(ctx, x, y0, width, height, {fillStyle: color})
+                    } else if (this.graphType === "line") {
+                        if (lastY != undefined) {
+                            IGVGraphics.strokeLine(ctx, lastPixelEnd, lastY, x, y, {
+                                "fillStyle": color,
+                                "strokeStyle": color
+                            })
                         }
-                        lastValue = f.value
-                        lastPixelEnd = pixelEnd
+                        IGVGraphics.strokeLine(ctx, x, y, x + width, y, {"fillStyle": color, "strokeStyle": color})
+                    } else {
+                        const height = y - y0
+                        IGVGraphics.fillRect(ctx, x, y0, width, height, {fillStyle: color})
+
                     }
+                    lastPixelEnd = x + width
+                    lastY = y
                 }
 
                 // If the track includes negative values draw a baseline
@@ -242,10 +249,7 @@ class WigTrack extends TrackBase {
 
     popupData(clickState, features) {
 
-        // We use the featureCache property rather than method to avoid async load.  If the
-        // feature is not already loaded this won't work,  but the user wouldn't be mousing over it either.
-
-        features = this.clickedFeatures(clickState, features)
+        if (features === undefined) features = this.clickedFeatures(clickState)
 
         if (features && features.length > 0) {
 
@@ -293,8 +297,19 @@ class WigTrack extends TrackBase {
         }
     }
 
-    supportsWholeGenome() {
+    get supportsWholeGenome() {
         return !this.config.indexURL && this.config.supportsWholeGenome !== false
+    }
+
+    /**
+     * Return color for feature.
+     * @param feature
+     * @returns {string}
+     */
+
+    getColorForFeature(f) {
+        let c = (f.value < 0 && this.altColor) ? this.altColor : this.color || DEFAULT_COLOR
+        return (typeof c === "function") ? c(f.value) : c
     }
 
     /**

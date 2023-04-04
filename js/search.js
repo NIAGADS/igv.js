@@ -92,9 +92,25 @@ async function search(browser, string) {
 
 function parseLocusString(browser, locus) {
 
+    // Check for tab delimited locus string
+    const tabTokens = locus.split('\t')
+    if (tabTokens.length >= 3) {
+        // Possibly a tab-delimited locus
+        try {
+            const chr = browser.genome.getChromosomeName(tabTokens[0])
+            const start = parseInt(tabTokens[1].replace(/,/g, ''), 10) - 1
+            const end = parseInt(tabTokens[2].replace(/,/g, ''), 10)
+            if (!isNaN(start) && !isNaN(end)) {
+                return {chr, start, end}
+            }
+        } catch (e) {
+            // Not a tab delimited locus, apparently, but not really an error as that was a guess
+        }
+
+    }
+
     const a = locus.split(':')
     const chr = a[0]
-
     if ('all' === chr && browser.genome.getChromosome(chr)) {
         return {chr, start: 0, end: browser.genome.getChromosome(chr).bpLength}
 
@@ -111,33 +127,50 @@ function parseLocusString(browser, locus) {
 
         if (a.length > 1) {
 
-            const b = a[1].split('-')
+            let b = a[1].split('-')
             if (b.length > 2) {
-                return undefined
-
-            } else {
-
-                let numeric
-                numeric = b[0].replace(/,/g, '')
-                if (isNaN(numeric)) {
+                // Allow for negative coordinates, which is possible if showing alignment soft clips
+                if (a[1].startsWith('-')) {
+                    const i = a[1].indexOf('-', 1)
+                    if (i > 0) {
+                        const t1 = a[1].substring(0, i)
+                        const t2 = a[1].substring(i + 1)
+                        b = [t1, t2]
+                    }
+                } else {
                     return undefined
                 }
 
-                extent.start = parseInt(numeric, 10) - 1
-                extent.end = extent.start + 1
+            }
 
-                if (1 === b.length) {
-                    extent.start -= 20
-                    extent.end += 20
+            let numeric
+            numeric = b[0].replace(/,/g, '')
+            if (isNaN(numeric)) {
+                return undefined
+            }
+
+            extent.start = parseInt(numeric, 10) - 1
+            extent.end = extent.start + 1
+
+            if (1 === b.length) {
+                // Don't clamp coordinates if single coordinate is supplied.
+                extent.start -= 20
+                extent.end += 20
+            }
+
+            if (2 === b.length) {
+                numeric = b[1].replace(/,/g, '')
+                if (isNaN(numeric)) {
+                    return undefined
+                } else {
+                    extent.end = parseInt(numeric, 10)
                 }
 
-                if (2 === b.length) {
-                    numeric = b[1].replace(/,/g, '')
-                    if (isNaN(numeric)) {
-                        return undefined
-                    } else {
-                        extent.end = parseInt(numeric, 10)
-                    }
+                // Allow negative coordinates only if browser is softclipped, i.e. there is at least alignment track with softclipping on
+                if (extent.start < 0 && !browser.isSoftclipped()) {
+                    const delta = -extent.start
+                    extent.start += delta
+                    extent.end += delta
                 }
             }
         }

@@ -1,30 +1,5 @@
-/*
- * The MIT License (MIT)
- *
- * Copyright (c) 2016 University of California San Diego
- * Author: Jim Robinson
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
 
-import {DOMUtils} from "../../node_modules/igv-utils/src/index.js"
+import {DOMUtils} from "../../node_modules/igv-ui/dist/igv-ui.js"
 
 class CursorGuide {
 
@@ -56,45 +31,33 @@ class CursorGuide {
 
             const target = document.elementFromPoint(event.clientX, event.clientY)
 
-            let viewport = undefined
+            const viewport = findAncestorOfClass(target, 'igv-viewport')
 
-            if (target.parentElement) {
+            if (viewport && browser.getRulerTrackView()) {
 
-                if (target.parentElement.classList.contains('igv-viewport-content')) {
-                    viewport = target.parentElement.parentElement
-                } else if (target.parentElement.classList.contains('igv-viewport') && target.classList.contains('igv-viewport-content')) {
-                    viewport = target.parentElement
+                this.verticalGuide.style.left = `${x}px`
+
+                const columns = browser.root.querySelectorAll('.igv-column')
+                let index = undefined
+                const viewportParent = viewport.parentElement
+                for (let i = 0; i < columns.length; i++) {
+                    if (undefined === index && viewportParent === columns[i]) {
+                        index = i
+                    }
                 }
 
-                if (viewport && browser.getRulerTrackView()) {
+                const rulerViewport = browser.getRulerTrackView().viewports[index]
+                const result = rulerViewport.mouseMove(event)
 
-                    this.verticalGuide.style.left = `${x}px`
+                if (result) {
 
-                    const columns = browser.root.querySelectorAll('.igv-column')
-                    let index = undefined
-                    const viewportParent = viewport.parentElement
-                    for (let i = 0; i < columns.length; i++) {
-                        if (undefined === index && viewportParent === columns[i]) {
-                            index = i
-                        }
+                    const {start, bp, end} = result
+                    const interpolant = (bp - start) / (end - start)
+
+                    if (this.customMouseHandler) {
+                        this.customMouseHandler({start, bp, end, interpolant})
                     }
-
-                    const rulerViewport = browser.getRulerTrackView().viewports[index]
-                    const result = rulerViewport.mouseMove(event)
-
-                    if (result) {
-
-                        const {start, bp, end} = result
-                        const interpolant = (bp - start) / (end - start)
-
-                        if (this.customMouseHandler) {
-                            this.customMouseHandler({start, bp, end, interpolant})
-                        }
-
-                    }
-
                 }
-
             }
 
         }
@@ -130,6 +93,25 @@ class CursorGuide {
         }
 
     }
+
+}
+
+/**
+ * Walk up the tree until a parent is found with the given classname.  If no ancestor is found return undefined.
+ * @param target
+ * @param classname
+ * @returns {*}
+ */
+function findAncestorOfClass(target, classname) {
+
+    while (target.parentElement) {
+        if (target.parentElement.classList.contains(classname)) {
+            return target.parentElement
+        } else {
+            target = target.parentElement
+        }
+    }
+    return undefined
 
 }
 

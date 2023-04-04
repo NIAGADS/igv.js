@@ -24,7 +24,7 @@
  * THE SOFTWARE.
  */
 
-import {DOMUtils} from '../../node_modules/igv-utils/src/index.js'
+import {DOMUtils} from '../../node_modules/igv-ui/dist/igv-ui.js'
 
 class SampleNameControl {
 
@@ -53,7 +53,7 @@ class SampleNameControl {
                 }
             }
 
-            browser.resize()
+            browser.layoutChange()
 
 
         })

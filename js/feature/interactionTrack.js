@@ -33,7 +33,7 @@ import MenuUtils from "../ui/menuUtils.js"
 import {createCheckbox} from "../igv-icons.js"
 import {scoreShade} from "../util/ucscUtils.js"
 import FeatureSource from "./featureSource.js"
-import {makeBedPEChords} from "../jbrowse/circularViewUtils.js"
+import {makeBedPEChords, sendChords} from "../jbrowse/circularViewUtils.js"
 import {getChrColor} from "../bam/bamTrack.js"
 
 function getArcType(config) {
@@ -49,6 +49,8 @@ function getArcType(config) {
             return config.arcType
     }
 }
+
+const DEFAULT_ARC_COLOR = "rgb(180,25,137)"
 
 class InteractionTrack extends TrackBase {
 
@@ -68,7 +70,7 @@ class InteractionTrack extends TrackBase {
         this.showBlocks = config.showBlocks === undefined ? true : config.showBlocks
         this.blockHeight = config.blockHeight || 3
         this.thickness = config.thickness || 1
-        this.color = config.color || "rgb(180,25,137)"
+        this.color = config.color
         this.alpha = config.alpha || 0.02  // was: 0.15
         this.painter = {flipAxis: !this.arcOrientation, dataRange: this.dataRange, paintAxis: paintAxis}
 
@@ -92,14 +94,20 @@ class InteractionTrack extends TrackBase {
         }
 
         // Create the FeatureSource and override the default whole genome method
-        this.featureSource = FeatureSource(config, this.browser.genome)
-        this.featureSource.getWGFeatures = getWGFeatures
+        if (config.featureSource) {
+            this.featureSource = config.featureSource
+            delete config._featureSource
+        } else {
+            this.featureSource = FeatureSource(config, this.browser.genome)
+            this.featureSource.getWGFeatures = getWGFeatures
+        }
     }
 
     async postInit() {
 
         if (typeof this.featureSource.getHeader === "function") {
             this.header = await this.featureSource.getHeader()
+            if(this.disposed) return;   // This track was removed during async load
         }
 
         // Set properties from track line
@@ -115,7 +123,7 @@ class InteractionTrack extends TrackBase {
         return this
     }
 
-    supportsWholeGenome() {
+    get supportsWholeGenome() {
         return true
     }
 
@@ -171,10 +179,16 @@ class InteractionTrack extends TrackBase {
                 // Reset transient property drawState.  An undefined value => feature has not been drawn.
                 feature.drawState = undefined
 
-                let color = feature.color || this.color
-                if (color && this.config.useScore) {
-                    color = getAlphaColor(color, scoreShade(feature.score))
+                let color
+                if(typeof this.color === 'function') {
+                    color = this.color(feature)
+                } else {
+                    color = this.color || feature.color || DEFAULT_ARC_COLOR
+                    if (color && this.config.useScore) {
+                        color = getAlphaColor(color, scoreShade(feature.score))
+                    }
                 }
+
                 ctx.lineWidth = feature.thickness || this.thickness || 1
 
                 if (feature.chr1 === feature.chr2 || feature.chr === 'all') {
@@ -263,7 +277,7 @@ class InteractionTrack extends TrackBase {
             for (let feature of featureList) {
                 let pixelStart = (feature.start - bpStart) / xScale
                 let pixelEnd = (feature.end - bpStart) / xScale
-                if (pixelEnd >= 0 && pixelStart <= pixelWidth) {
+                if (pixelStart >= 0 && pixelEnd <= pixelWidth) {
                     max = Math.max(max, pixelEnd - pixelStart)
                 }
             }
@@ -449,18 +463,10 @@ class InteractionTrack extends TrackBase {
 
     menuItemList() {
 
-        let items = [
-
-            {
-                name: "Set track color",
-                click: () => {
-                    this.trackView.presentColorPicker()
-                }
-            },
-            '<hr/>'
-        ]
+        let items = []
 
         if (this.hasValue) {
+            items.push("<hr/>")
             const lut =
                 {
                     "nested": "Nested",
@@ -503,7 +509,7 @@ class InteractionTrack extends TrackBase {
             items = items.concat(MenuUtils.numericDataMenuItems(this.trackView))
         }
 
-        if (this.browser.circularView && true === this.browser.circularViewVisible) {
+        if (this.browser.circularView) {
             items.push('<hr/>')
             items.push({
                 label: 'Add interactions to circular view',
@@ -521,7 +527,7 @@ class InteractionTrack extends TrackBase {
     contextMenuItemList(clickState) {
 
         // Experimental JBrowse feature
-        if (this.browser.circularView && true === this.browser.circularViewVisible) {
+        if (this.browser.circularView ) {
             const viewport = clickState.viewport
             const list = []
 
@@ -550,21 +556,22 @@ class InteractionTrack extends TrackBase {
 
         // inView features are simply features that have been drawn, i.e. have a drawState
         const inView = cachedFeatures.filter(f => f.drawState)
-        if(inView.length === 0) erturn;
+        if(inView.length === 0) return;
 
-        this.browser.circularViewVisible = true
         const chords = makeBedPEChords(inView)
-
-        // for filtered set, distinguishing the chromosomes is more critical than tracks
-        const chordSetColor = IGVColor.addAlpha("all" === refFrame.chr ? this.color : getChrColor(refFrame.chr), 0.5)
-        const trackColor = IGVColor.addAlpha(this.color, 0.5)
-
-        // name the chord set to include filtering information
-        const encodedName = this.name.replaceAll(' ', '%20')
-        const chordSetName = "all" === refFrame.chr ?
-            encodedName :
-            `${encodedName} (${refFrame.chr}:${refFrame.start}-${refFrame.end} ; range:${this.dataRange.min}-${this.dataRange.max})`
-        this.browser.circularView.addChords(chords, {track: chordSetName, color: chordSetColor, trackColor: trackColor})
+        sendChords(chords, this, refFrame, 0.5)
+        //
+        //
+        // // for filtered set, distinguishing the chromosomes is more critical than tracks
+        // const chordSetColor = IGVColor.addAlpha("all" === refFrame.chr ? this.color : getChrColor(refFrame.chr), 0.5)
+        // const trackColor = IGVColor.addAlpha(this.color, 0.5)
+        //
+        // // name the chord set to include locus and filtering information
+        // const encodedName = this.name.replaceAll(' ', '%20')
+        // const chordSetName = "all" === refFrame.chr ?
+        //     encodedName :
+        //     `${encodedName} (${refFrame.chr}:${refFrame.start}-${refFrame.end} ; range:${this.dataRange.min}-${this.dataRange.max})`
+        // this.browser.circularView.addChords(chords, {track: chordSetName, color: chordSetColor, trackColor: trackColor})
     }
 
     doAutoscale(features) {
@@ -585,7 +592,7 @@ class InteractionTrack extends TrackBase {
 
     popupData(clickState, features) {
 
-        features = this.clickedFeatures(clickState)
+        if(features === undefined) features = this.clickedFeatures(clickState)
 
         const data = []
         for (let feature of features) {
@@ -607,11 +614,13 @@ class InteractionTrack extends TrackBase {
 
             if (f.extras && this.header && this.header.columnNames) {
                 const columnNames = this.header.columnNames
-                for (let i = 10; i < columnNames.length; i++) {
+                const stdColumns = this.header.hiccups ? 6 : 10
+                for (let i = stdColumns; i < columnNames.length; i++) {
+                    if(this.header.colorColumn === i) continue;
                     if (columnNames[i] === 'info') {
-                        extractInfoColumn(data, f.extras[i - 10])
+                        extractInfoColumn(data, f.extras[i - stdColumns])
                     } else {
-                        data.push({name: columnNames[i], value: f.extras[i - 10]})
+                        data.push({name: columnNames[i], value: f.extras[i - stdColumns]})
                     }
                 }
             }
@@ -625,11 +634,11 @@ class InteractionTrack extends TrackBase {
         return data
     }
 
-    clickedFeatures(clickState, features) {
+    clickedFeatures(clickState) {
 
         // We use the cached features rather than method to avoid async load.  If the
         // feature is not already loaded this won't work,  but the user wouldn't be mousing over it either.
-        const featureList = features || clickState.viewport.getCachedFeatures()
+        const featureList =  clickState.viewport.cachedFeatures
         const candidates = []
         if (featureList) {
             const proportional = (this.arcType === "proportional" || this.arcType === "inView" || this.arcType === "partialInView")
@@ -740,7 +749,7 @@ function estimateTheta(x) {
     let thetaLeft = idx === 0 ? 0 : theta[idx - 1]
     let thetaRight = idx < theta.length ? theta[idx] : Math.PI / 2
 
-    return thetaLeft + r * (thetaRight - thetaLeft)
+    return Math.min(Math.PI/2,  (thetaLeft + r * (thetaRight - thetaLeft)))
 
 }
 
@@ -809,7 +818,7 @@ function getWGFeatures(allFeatures) {
         if (chrFeatures) {
             for (let f of chrFeatures) {
                 if (!f.dup) {
-                    const bin = f.score ? Math.min(nBins - 1, Math.floor(Math.log(f.score) / binSize)) : 0
+                    const bin = f.score  ? Math.max(0, Math.min(nBins - 1, Math.floor(Math.log(f.score) / binSize))) : 0
                     if (binnedFeatures[bin].length < featuresPerBin) {
                         binnedFeatures[bin].push(makeWGFeature(f))
                     } else {
