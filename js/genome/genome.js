@@ -442,6 +442,8 @@ function constructWG(genome, config) {
         const median = lengths.reduce((a, b) => Math.max(a, b))
         const threshold = median / 50
         wgChromosomes = Object.values(genome.chromosomes).filter(chr => chr.bpLength > threshold)
+        // remove scaffolds, etc that pass the threshold test
+        wgChromosomes = Object.values(wgChromosomes).filter(chr => !chr.name.endsWith('_alt') );
 
         // Sort chromosomes.  First segregate numeric and alpha names, sort numeric, leave alpha as is
         const numericChromosomes = wgChromosomes.filter(chr => isDigit(chr.name.replace('chr', '')))
