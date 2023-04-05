@@ -279,7 +279,7 @@ class FeatureTrack extends TrackBase {
                 const infoURL = this.infoURL || this.config.infoURL
                 for (let fd of featureData) {
                     if (isGFF && this.colorBy) {
-                        if (fd.name.replace(':', '') === this.colorBy) {
+                        if (fd.hasOwnProperty("name") && (fd.name.replace(':', '') === this.colorBy)) {
                             const color = this.color ? this.color(feature) : this.colorTable ? this.colorTable.getColor(fd.value) : null;
                             if (color !== null) {
                                 fd = Object.assign(fd, {color: color});
