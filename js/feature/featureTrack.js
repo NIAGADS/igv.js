@@ -261,18 +261,34 @@ class FeatureTrack extends TrackBase {
 
                 // If we have an infoURL, find the name property and create the link.  We do this at this level
                 // to catch name properties in both custom popupData functions and the generic extractPopupData function
+                const isGFF = "gff" === this.config.format || "gff3" === this.config.format || "gtf" === this.config.format
 
                 const infoURL = this.infoURL || this.config.infoURL
                 for (let fd of featureData) {
-                    data.push(fd)
+                    if (isGFF && this.colorBy) {
+                        if (fd.hasOwnProperty("name") && (fd.name.replace(':', '') === this.colorBy)) {
+                            const color = this.color ? this.color(feature) : this.colorTable ? this.colorTable.getColor(fd.value) : null;
+                            if (color !== null) {
+                                fd = Object.assign(fd, {color: color});
+                            }
+                        }
+                        data.push(fd);
+                    }
+                    else {
+                        data.push(fd);
+                    }
+                    
                     if (infoURL &&
                         fd.name &&
                         fd.name.toLowerCase() === "name" &&
                         fd.value &&
                         StringUtils.isString(fd.value) &&
                         !fd.value.startsWith("<")) {
-                        const href = infoURL.replace("$$", feature.name)
-                        fd.value = `<a target=_blank href=${href}>${fd.value}</a>`
+                          const href = infoURL.replace("$$", feature.name)
+                          fd.value = `<a target=_blank href=${href}>${fd.value}</a>`
+                          const url = this.infoURL || this.config.infoURL
+                          data.push({name: "Info", value: `<a target="_blank" href=${href}>${fd.value}</a>`})
+                        }
                     }
                 }
 
@@ -281,7 +297,7 @@ class FeatureTrack extends TrackBase {
 
                 // If we have clicked over an exon number it.
                 // Disabled for GFF and GTF files if the visibility window is < the feature length since we don't know if we have all exons
-                const isGFF = "gff" === this.config.format || "gff3" === this.config.format || "gtf" === this.config.format
+                // const isGFF = "gff" === this.config.format || "gff3" === this.config.format || "gtf" === this.config.format
                 if (f.exons) {
                     for (let i = 0; i < f.exons.length; i++) {
                         const exon = f.exons[i]
