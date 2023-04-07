@@ -440,8 +440,6 @@
   width: auto;
   height: auto;
   max-width: 50%;
-  padding-left: 4px;
-  padding-right: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -459,6 +457,7 @@
   background-color: white;
   z-index: 128;
   cursor: pointer;
+  padding: 4px;
 }
 
 .igv-track-label:hover,
@@ -471,6 +470,7 @@
   padding-left: 8px;
   padding-right: 8px;
   padding-top: 4px;
+  white-space: normal !important;
 }
 
 .igv-center-line {
