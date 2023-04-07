@@ -185,6 +185,7 @@ function renderFeatureLabel(ctx, feature, featureX, featureX1, featureY, referen
         let name = feature.name
         if (name === undefined && feature.gene) name = feature.gene.name
         if (name === undefined) name = feature.id || feature.ID
+        if (feature.geneObject) name = feature.geneObject.name
         if (!name || name === '.') return
 
 

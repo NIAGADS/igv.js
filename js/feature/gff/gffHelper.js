@@ -46,6 +46,8 @@ class GFFHelper {
 
         const filterTypes = this.filterTypes
         features = features.filter(f => filterTypes === undefined || !filterTypes.has(f.type))
+        
+        this.nameFeatures(features)
 
         if ("gff3" === this.format) {
             const tmp = this.combineFeaturesById(features)
@@ -57,7 +59,7 @@ class GFFHelper {
             return a.start - b.start
         })
         this.numberExons(combinedFeatures, genomicInterval)
-        this.nameFeatures(combinedFeatures)
+        // this.nameFeatures(combinedFeatures)
         return combinedFeatures
     }
 
