@@ -17,7 +17,7 @@ import version from "./version.js";
 import TrackView from "./trackView.js";
 import {
   igvxhr,
-  oauth,
+  oauth.
   IGVMath,
   FeatureCache,
   FileUtils,

@@ -24,7 +24,6 @@
  * THE SOFTWARE.
  */
 
-import {Alert} from '../../node_modules/igv-ui/dist/igv-ui.js'
 import gmodCRAM from "../vendor/cram-bundle.js"
 import AlignmentContainer from "../bam/alignmentContainer.js"
 import BamUtils from "../bam/bamUtils.js"
@@ -137,8 +136,7 @@ class CramReader {
         const header = await this.getHeader()
         const queryChr = header.chrAliasTable.hasOwnProperty(chr) ? header.chrAliasTable[chr] : chr
         const chrIdx = header.chrToIndex[queryChr]
-        const alignmentContainer = new AlignmentContainer(chr, bpStart, bpEnd,
-            this.samplingWindowSize, this.samplingDepth, this.pairsSupported, this.alleleFreqThreshold)
+        const alignmentContainer = new AlignmentContainer(chr, bpStart, bpEnd, this.config)
 
         if (chrIdx === undefined) {
             return alignmentContainer
@@ -179,7 +177,7 @@ class CramReader {
                 if (message && message.indexOf("MD5") >= 0) {
                     message = "Sequence mismatch. Is this the correct genome for the loaded CRAM?"
                 }
-                Alert.presentAlert(new Error(message))
+                this.browser.alert.present(new Error(message))
                 throw error
             }
         }

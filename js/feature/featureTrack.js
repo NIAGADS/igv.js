@@ -114,6 +114,7 @@ class FeatureTrack extends TrackBase {
 
         if (typeof this.featureSource.getHeader === "function") {
             this.header = await this.featureSource.getHeader()
+            if (this.disposed) return   // This track was removed during async load
         }
 
         // Set properties from track line
@@ -129,8 +130,16 @@ class FeatureTrack extends TrackBase {
 
     }
 
-    supportsWholeGenome() {
-        return (this.config.indexed === false || !this.config.indexURL) && this.config.supportsWholeGenome !== false
+    get supportsWholeGenome() {
+        if (this.config.supportsWholeGenome !== undefined) {
+            return this.config.supportsWholeGenome
+        } else if (this.featureSource && typeof this.featureSource.supportsWholeGenome === 'function') {
+            return this.featureSource.supportsWholeGenome()
+        } else {
+            if (this.visibilityWindow === undefined && (this.config.indexed === false || !this.config.indexURL)) {
+                return true
+            }
+        }
     }
 
     async getFeatures(chr, start, end, bpPerPixel) {
@@ -185,24 +194,28 @@ class FeatureTrack extends TrackBase {
 
             const rowFeatureCount = []
             options.rowLastX = []
+            options.rowLastLabelX = []
             for (let feature of featureList) {
-                const row = feature.row || 0
-                if (rowFeatureCount[row] === undefined) {
-                    rowFeatureCount[row] = 1
-                } else {
-                    rowFeatureCount[row]++
+                if (feature.start > bpStart && feature.end < bpEnd) {
+                    const row = this.displayMode === "COLLAPSED" ? 0 : feature.row || 0
+                    if (rowFeatureCount[row] === undefined) {
+                        rowFeatureCount[row] = 1
+                    } else {
+                        rowFeatureCount[row]++
+                    }
+                    options.rowLastX[row] = -Number.MAX_SAFE_INTEGER
+                    options.rowLastLabelX[row] = -Number.MAX_SAFE_INTEGER
                 }
-                options.rowLastX[row] = -Number.MAX_SAFE_INTEGER
             }
+            const maxFeatureCount = Math.max(1, Math.max(...rowFeatureCount))
+            const pixelsPerFeature = pixelWidth / maxFeatureCount
 
             let lastPxEnd = []
             for (let feature of featureList) {
                 if (feature.end < bpStart) continue
                 if (feature.start > bpEnd) break
-
                 const row = this.displayMode === 'COLLAPSED' ? 0 : feature.row
-                const featureDensity = pixelWidth / rowFeatureCount[row]
-                options.drawLabel = options.labelAllFeatures || featureDensity > 10
+                options.drawLabel = options.labelAllFeatures || pixelsPerFeature > 10
                 const pxEnd = Math.ceil((feature.end - bpStart) / bpPerPixel)
                 const last = lastPxEnd[row]
                 if (!last || pxEnd > last) {
@@ -216,7 +229,6 @@ class FeatureTrack extends TrackBase {
                         ctx.globalAlpha = 1.0
                     }
                     lastPxEnd[row] = pxEnd
-
                 }
             }
 
@@ -226,10 +238,10 @@ class FeatureTrack extends TrackBase {
 
     };
 
-    clickedFeatures(clickState, features) {
+    clickedFeatures(clickState) {
 
         const y = clickState.y - this.margin
-        const allFeatures = super.clickedFeatures(clickState, features)
+        const allFeatures = super.clickedFeatures(clickState)
 
         let row
         switch (this.displayMode) {
@@ -253,9 +265,8 @@ class FeatureTrack extends TrackBase {
      */
     popupData(clickState, features) {
 
-        features = this.clickedFeatures(clickState, features)
+        if (features === undefined) features = this.clickedFeatures(clickState)
         const genomicLocation = clickState.genomicLocation
-
         const data = []
         for (let feature of features) {
 
@@ -291,20 +302,18 @@ class FeatureTrack extends TrackBase {
                         data.push(fd);
                     }
 
-                    if (infoURL) {
-                        if (fd.name &&
-                            fd.name.toLowerCase() === "name" &&
-                            fd.value &&
-                            StringUtils.isString(fd.value) &&
-                            !fd.value.startsWith("<")) {
+                    if (infoURL &&
+                        fd.name &&
+                        fd.name.toLowerCase() === "name" &&
+                        fd.value &&
+                        StringUtils.isString(fd.value) &&
+                        !fd.value.startsWith("<")) {
+                        const href = infoURL.replace("$$", feature.name)
+                        fd.value = `<a target=_blank href=${href}>${fd.value}</a>`
 
-
-                            const url = this.infoURL || this.config.infoURL
-                            const href = url.replace("$$", feature.name)
-                            data.push({name: "Info", value: `<a target="_blank" href=${href}>${fd.value}</a>`})
-                        }
                     }
                 }
+
 
                 //Array.prototype.push.apply(data, featureData);
 
@@ -334,7 +343,7 @@ class FeatureTrack extends TrackBase {
     }
 
     menuItemList() {
-        
+
         const menuItems = []
 
         if (this.render === renderSnp) {
@@ -362,7 +371,7 @@ class FeatureTrack extends TrackBase {
             menuItems.push(
                 {
                     object: $(createCheckbox(lut[displayMode], displayMode === this.displayMode)),
-                    click:  () => {
+                    click: () => {
                         this.displayMode = displayMode
                         this.config.displayMode = displayMode
                         this.trackView.checkContentHeight()
@@ -378,32 +387,60 @@ class FeatureTrack extends TrackBase {
 
     contextMenuItemList(clickState) {
 
-        if (isSecureContext()) {
-            const features = this.clickedFeatures(clickState)
-            if (features.length > 1) {
-                features.sort((a, b) => (a.end - a.start) - (b.end - b.start))
-            }
-            const f = features[0]   // The longest feature
-            if ((f.end - f.start) <= 1000000) {
-                return [
+        const features = this.clickedFeatures(clickState)
+
+        if (undefined === features || 0 === features.length) {
+            return undefined
+        }
+
+        if (features.length > 1) {
+            features.sort((a, b) => (b.end - b.start) - (a.end - a.start))
+        }
+        const f = features[0]   // The shortest clicked feature
+
+        if ((f.end - f.start) <= 1000000) {
+            const list = [{
+                label: 'View feature sequence',
+                click: async () => {
+                    let seq = await this.browser.genome.getSequence(f.chr, f.start, f.end)
+                    if (!seq) {
+                        seq = "Unknown sequence"
+                    } else if (f.strand === '-') {
+                        seq = reverseComplementSequence(seq)
+                    }
+                    this.browser.alert.present(seq)
+
+                }
+            }]
+
+            if (isSecureContext() && navigator.clipboard !== undefined) {
+                list.push(
                     {
                         label: 'Copy feature sequence',
                         click: async () => {
                             let seq = await this.browser.genome.getSequence(f.chr, f.start, f.end)
-                            if (f.strand === '-') {
+                            if (!seq) {
+                                seq = "Unknown sequence"
+                            } else if (f.strand === '-') {
                                 seq = reverseComplementSequence(seq)
                             }
-                            navigator.clipboard.writeText(seq)
+                            try {
+                                await navigator.clipboard.writeText(seq)
+                            } catch (e) {
+                                console.error(e)
+                                this.browser.alert.present(`error copying sequence to clipboard ${e}`)
+                            }
                         }
-                    },
-                    '<hr/>'
-                ]
+                    }
+                )
             }
+            list.push('<hr/>')
+            return list
+        } else {
+
+            return undefined
+
         }
-
-        // Either not a secure context (i.e. http: protocol), or feature is too long
-        return undefined
-
     }
 
     description() {
@@ -424,7 +461,7 @@ class FeatureTrack extends TrackBase {
             desc += "</html>"
             return desc
         } else {
-            return super.description();
+            return super.description()
         }
 
     };

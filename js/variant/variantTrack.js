@@ -30,14 +30,16 @@ import TrackBase from "../trackBase.js"
 import IGVGraphics from "../igv-canvas.js"
 import {createCheckbox} from "../igv-icons.js"
 import {ColorTable, PaletteColorTable} from "../util/colorPalletes.js"
-import {makeVCFChords} from "../jbrowse/circularViewUtils.js"
-import {FileUtils, IGVColor, StringUtils} from "../../node_modules/igv-utils/src/index.js"
+import {makeVCFChords, sendChords} from "../jbrowse/circularViewUtils.js"
+import {FileUtils, StringUtils} from "../../node_modules/igv-utils/src/index.js"
 
 const isString = StringUtils.isString
 
 
 const DEFAULT_VISIBILITY_WINDOW = 1000000
 const TOP_MARGIN = 10
+const STANDARD_FIELDS = new Map([["REF", "referenceBases"], ["ALT", "alternateBases"], ["QUAL", "quality"], ["FILTER", "filter"]])
+
 
 class VariantTrack extends TrackBase {
 
@@ -79,7 +81,9 @@ class VariantTrack extends TrackBase {
             this.colorTables = new Map()
             this.colorTables.set(config.colorBy, new ColorTable(config.colorTable))
         }
-        this._color = config.color
+
+        this._strokecolor = config.strokecolor
+        this._context_hook = config.context_hook
 
         this.showGenotypes = config.showGenotypes === undefined ? true : config.showGenotypes
 
@@ -91,6 +95,7 @@ class VariantTrack extends TrackBase {
     async postInit() {
 
         this.header = await this.getHeader()   // cricital, don't remove'
+        if(this.disposed) return;   // This track was removed during async load
         if (undefined === this.visibilityWindow && this.config.indexed !== false) {
             const fn = FileUtils.isFile(this.config.url) ? this.config.url.name : this.config.url
             if (isString(fn) && fn.toLowerCase().includes("gnomad")) {
@@ -105,7 +110,7 @@ class VariantTrack extends TrackBase {
 
     }
 
-    supportsWholeGenome() {
+    get supportsWholeGenome() {
         return this.config.indexed === false || this.config.supportsWholeGenome === true
     }
 
@@ -188,11 +193,14 @@ class VariantTrack extends TrackBase {
         IGVGraphics.fillRect(context, 0, pixelTop, pixelWidth, pixelHeight, {'fillStyle': "rgb(255, 255, 255)"})
 
         const vGap = ("SQUISHED" === this.displayMode) ? this.squishedVGap : this.expandedVGap
-        const rc = ("COLLAPSED" === this.displayMode) ? 1 : this.nVariantRows
+        const rowCount = ("COLLAPSED" === this.displayMode) ? 1 : this.nVariantRows
         const variantHeight = ("SQUISHED" === this.displayMode) ? this.squishedVariantHeight : this.expandedVariantHeight
-        this.variantBandHeight = TOP_MARGIN + rc * (variantHeight + vGap)
+        this.variantBandHeight = TOP_MARGIN + rowCount * (variantHeight + vGap)
 
-        const callSets = this.callSets
+        let callSets = this.callSets
+        if(!callSets && this._f) {
+            callSets = this._f.callSets   // "Complementary" variant for structural variants
+        }
         const nCalls = this.getCallsetsLength()
         if (callSets && nCalls > 0 && this.showGenotypes !== false) {
             IGVGraphics.strokeLine(context, 0, this.variantBandHeight, pixelWidth, this.variantBandHeight, {strokeStyle: 'rgb(224,224,224) '})
@@ -227,6 +235,17 @@ class VariantTrack extends TrackBase {
                 }
                 context.fillStyle = this.getVariantColor(variant)
                 context.fillRect(x, y, w, h)
+
+                //only paint stroke if a color is defined
+                let strokecolor = this.getVariantStrokecolor(variant)
+                if (strokecolor){
+                  context.strokeStyle = strokecolor
+                  context.strokeRect(x, y, w, h)
+                }
+
+                // call hook if _context_hook fn is defined
+                this.callContextHook(variant, context, x, y, w, h)
+
                 variant.pixelRect = {x, y, w, h}
 
                 // Loop though the calls for this variant.  There will potentially be a call for each sample.
@@ -237,44 +256,46 @@ class VariantTrack extends TrackBase {
                     this.sampleHeight = nVariantRows * (callHeight + vGap)  // For each sample, there is a call for each variant at this position
 
                     let sampleNumber = 0
-                    for (let callSet of callSets) {
-                        const call = variant.calls[callSet.id]
-                        if (call) {
-                            const row = "COLLAPSED" === this.displayMode ? 0 : variant.row
-                            const py = this.sampleYOffset + sampleNumber * this.sampleHeight + row * (callHeight + vGap)
-                            let allVar = true  // until proven otherwise
-                            let allRef = true
-                            let noCall = false
+                    if(callSets && variant.calls) {
+                        for (let callSet of callSets) {
+                            const call = variant.calls[callSet.id]
+                            if (call) {
+                                const row = "COLLAPSED" === this.displayMode ? 0 : variant.row
+                                const py = this.sampleYOffset + sampleNumber * this.sampleHeight + row * (callHeight + vGap)
+                                let allVar = true  // until proven otherwise
+                                let allRef = true
+                                let noCall = false
 
-                            if (call.genotype) {
-                                for (let g of call.genotype) {
-                                    if ('.' === g) {
-                                        noCall = true
-                                        break
-                                    } else {
-                                        if (g !== 0) allRef = false
-                                        if (g === 0) allVar = false
+                                if (call.genotype) {
+                                    for (let g of call.genotype) {
+                                        if ('.' === g) {
+                                            noCall = true
+                                            break
+                                        } else {
+                                            if (g !== 0) allRef = false
+                                            if (g === 0) allVar = false
+                                        }
                                     }
                                 }
+
+                                if (!call.genotype) {
+                                    context.fillStyle = this.noGenotypeColor
+                                } else if (noCall) {
+                                    context.fillStyle = this.noCallColor
+                                } else if (allRef) {
+                                    context.fillStyle = this.homrefColor
+                                } else if (allVar) {
+                                    context.fillStyle = this.homvarColor
+                                } else {
+                                    context.fillStyle = this.hetvarColor
+                                }
+
+                                context.fillRect(x, py, w, callHeight)
+
+                                callSet.pixelRect = {x, y: py, w, h: callHeight}
                             }
-
-                            if (!call.genotype) {
-                                context.fillStyle = this.noGenotypeColor
-                            } else if (noCall) {
-                                context.fillStyle = this.noCallColor
-                            } else if (allRef) {
-                                context.fillStyle = this.homrefColor
-                            } else if (allVar) {
-                                context.fillStyle = this.homvarColor
-                            } else {
-                                context.fillStyle = this.hetvarColor
-                            }
-
-                            context.fillRect(x, py, w, callHeight)
-
-                            callSet.pixelRect = {x, y: py, w, h: callHeight}
+                            sampleNumber++
                         }
-                        sampleNumber++
                     }
                 }
             }
@@ -290,14 +311,21 @@ class VariantTrack extends TrackBase {
         let variantColor
 
         if (this.colorBy) {
-            const value = v.info[this.colorBy]
-            variantColor = this.getVariantColorTable(this.colorBy).getColor(value)
+            const colorBy = this.colorBy
+            let value
+            if (v.info.hasOwnProperty(colorBy)) {
+                value = v.info[colorBy]
+            } else if (STANDARD_FIELDS.has(colorBy)) {
+                const key = STANDARD_FIELDS.get(colorBy)
+                value = v[key]
+            }
+            variantColor = this.getVariantColorTable(colorBy).getColor(value)
             if (!variantColor) {
                 variantColor = "gray"
             }
 
         } else if (this._color) {
-            variantColor = (typeof this._color === "function") ? this._color(v) : this._color
+            variantColor = (typeof this._color === "function") ? this._color(variant) : this._color
         } else if ("NONVARIANT" === v.type) {
             variantColor = this.nonRefColor
         } else if ("MIXED" === v.type) {
@@ -308,9 +336,34 @@ class VariantTrack extends TrackBase {
         return variantColor
     }
 
-    clickedFeatures(clickState, features) {
+    getVariantStrokecolor(variant) {
 
-        let featureList = super.clickedFeatures(clickState, features)
+        const v = variant._f || variant
+        let variantStrokeColor
+
+        if (this._strokecolor) {
+            variantStrokeColor = (typeof this._strokecolor === "function") ? this._strokecolor(v) : this._strokecolor
+        } else {
+            variantStrokeColor = undefined
+        }
+        return variantStrokeColor
+    }
+
+    callContextHook(variant, context, x, y, w, h) {
+        if (this._context_hook) {
+          if (typeof this._context_hook === "function") {
+            const v = variant._f || variant
+
+            context.save()
+            this._context_hook(v, context, x, y, w, h)
+            context.restore()
+          }
+        }
+    }
+
+    clickedFeatures(clickState) {
+
+        let featureList = super.clickedFeatures(clickState)
 
         const vGap = (this.displayMode === 'EXPANDED') ? this.expandedVGap : this.squishedVGap
         const callHeight = vGap + ("SQUISHED" === this.displayMode ? this.squishedCallHeight : this.expandedCallHeight)
@@ -319,15 +372,17 @@ class VariantTrack extends TrackBase {
         if (yOffset <= this.variantBandHeight) {
             // Variant
             const variantHeight = ("SQUISHED" === this.displayMode) ? this.squishedVariantHeight : this.expandedVariantHeight
-            const variantRow = (Math.floor)((yOffset - TOP_MARGIN) / (variantHeight + vGap))
-            featureList = featureList.filter(f => f.row === variantRow)
+            const variantRow = Math.floor((yOffset - TOP_MARGIN) / (variantHeight + vGap))
+            if ("COLLAPSED" !== this.displayMode) {
+                featureList = featureList.filter(f => f.row === variantRow)
+            }
         } else if (this.callSets) {
             const callSets = this.callSets
             const sampleY = yOffset - this.variantBandHeight
             const sampleRow = Math.floor(sampleY / this.sampleHeight)
             if (sampleRow >= 0 && sampleRow < callSets.length) {
                 const variantRow = Math.floor((sampleY - sampleRow * this.sampleHeight) / callHeight)
-                const variants = featureList.filter(f => f.row === variantRow)
+                const variants = "COLLAPSED" === this.displayMode ? featureList : featureList.filter(f => f.row === variantRow)
                 const cs = callSets[sampleRow]
                 featureList = variants.map(v => {
                     const call = v.calls[cs.id]
@@ -344,9 +399,9 @@ class VariantTrack extends TrackBase {
     /**
      * Return "popup data" for feature @ genomic location.  Data is an array of key-value pairs
      */
-    popupData(clickState, features) {
+    popupData(clickState, featureList) {
 
-        const featureList = this.clickedFeatures(clickState, features)
+        if(featureList === undefined) featureList = this.clickedFeatures(clickState)
         const genomicLocation = clickState.genomicLocation
         const genomeID = this.browser.genome.id
         const sampleInformation = this.browser.sampleInformation
@@ -534,7 +589,7 @@ class VariantTrack extends TrackBase {
         }
 
         // Experimental JBrowse circular view integration
-        if (this.browser.circularView && true === this.browser.circularViewVisible) {
+        if (this.browser.circularView) {
 
             menuItems.push('<hr>')
             menuItems.push({
@@ -542,17 +597,8 @@ class VariantTrack extends TrackBase {
                 click: () => {
                     const inView = []
                     for (let viewport of this.trackView.viewports) {
-                        const refFrame = viewport.referenceFrame
-                        for (let f of viewport.getCachedFeatures()) {
-                            if (f.end >= refFrame.start && f.start <= refFrame.end) {
-                                inView.push(f)
-                            }
-                        }
+                        this.sendChordsForViewport(viewport)
                     }
-
-                    const chords = makeVCFChords(inView)
-                    const color = IGVColor.addAlpha(this._color || this.defaultColor, 0.5)
-                    this.browser.circularView.addChords(chords, {track: this.name, color: color})
                 }
             })
         }
@@ -564,20 +610,14 @@ class VariantTrack extends TrackBase {
     contextMenuItemList(clickState) {
 
         // Experimental JBrowse circular view integration
-        if (this.browser.circularView && true === this.browser.circularViewVisible) {
+        if (this.browser.circularView) {
             const viewport = clickState.viewport
             const list = []
 
             list.push({
                 label: 'Add SVs to Circular View',
                 click: () => {
-                    const refFrame = viewport.referenceFrame
-                    const inView = "all" === refFrame.chr ?
-                        this.featureSource.getAllFeatures() :
-                        this.featureSource.featureCache.queryFeatures(refFrame.chr, refFrame.start, refFrame.end)
-                    const chords = makeVCFChords(inView)
-                    const color = IGVColor.addAlpha(this._color || this.defaultColor, 0.5)
-                    this.browser.circularView.addChords(chords, {track: this.name, color: color})
+                    this.sendChordsForViewport(viewport)
                 }
             })
 
@@ -586,6 +626,15 @@ class VariantTrack extends TrackBase {
         }
     }
 
+
+    sendChordsForViewport(viewport) {
+        const refFrame = viewport.referenceFrame
+        const inView = "all" === refFrame.chr ?
+            this.featureSource.getAllFeatures() :
+            this.featureSource.featureCache.queryFeatures(refFrame.chr, refFrame.start, refFrame.end)
+        const chords = makeVCFChords(inView)
+        sendChords(chords, this, refFrame, 0.5)
+    }
 
     /**
      * Create a "color by" checkbox menu item, optionally initially checked

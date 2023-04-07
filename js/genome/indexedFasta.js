@@ -63,7 +63,9 @@ class FastaSequence {
 
     async getSequence(chr, start, end) {
 
-        if (!(this.interval && this.interval.contains(chr, start, end))) {
+        const hasCachedSquence = this.interval && this.interval.contains(chr, start, end)
+
+        if (!hasCachedSquence) {
 
             // Expand query, to minimum of 50kb
             let qstart = start
@@ -118,7 +120,7 @@ class FastaSequence {
 
                     this.chromosomeNames.push(chr)
                     this.index[chr] = indexEntry
-                    this.chromosomes[chr] = new Chromosome(chr, order++, 0, size)
+                    this.chromosomes[chr] = new Chromosome(chr, order++, size)
                 }
             }
             return this.index

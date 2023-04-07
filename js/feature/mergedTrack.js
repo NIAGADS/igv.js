@@ -25,11 +25,22 @@
  */
 
 import TrackBase from "../trackBase.js"
+import paintAxis from "../util/paintAxis.js"
+import MenuUtils from "../ui/menuUtils.js"
+import {FeatureUtils} from "../../node_modules/igv-utils/src/index.js"
 
+
+/**
+ * Represents 2 or more wig tracks overlaid on a common viewport.
+ */
 class MergedTrack extends TrackBase {
 
     constructor(config, browser) {
         super(config, browser)
+        this.type = "merged"
+        this.featureType = 'numeric'
+        this.paintAxis = paintAxis
+        this.graphType = config.graphType
     }
 
     init(config) {
@@ -39,21 +50,6 @@ class MergedTrack extends TrackBase {
 
         super.init(config)
     }
-
-    get height() {
-        return this._height
-    }
-
-    set height(h) {
-        this._height = h
-        if (this.tracks) {
-            for (let t of this.tracks) {
-                t.height = h
-                t.config.height = h
-            }
-        }
-    }
-
 
     async postInit() {
 
@@ -74,112 +70,161 @@ class MergedTrack extends TrackBase {
             }
         }
 
-        this.height = this.config.height || 100
+        this.flipAxis = this.config.flipAxis ? this.config.flipAxis : false
+        this.logScale = this.config.logScale ? this.config.logScale : false
+        this.autoscale = this.config.autoscale || this.config.max === undefined
+        if (!this.autoscale) {
+            this.dataRange = {
+                min: this.config.min || 0,
+                max: this.config.max
+            }
+        }
+        for (let t of this.tracks) {
+            t.autoscale = false
+            t.dataRange = this.dataRange
+        }
+
+        this.height = this.config.height || 50
 
         return Promise.all(p)
     }
 
+    get height() {
+        return this._height
+    }
 
+    set height(h) {
+        this._height = h
+        if (this.tracks) {
+            for (let t of this.tracks) {
+                t.height = h
+                t.config.height = h
+            }
+        }
+    }
+
+    menuItemList() {
+        let items = []
+        if (this.flipAxis !== undefined) {
+            items.push({
+                label: "Flip y-axis",
+                click: () => {
+                    this.flipAxis = !this.flipAxis
+                    this.trackView.repaintViews()
+                }
+            })
+        }
+
+        items = items.concat(MenuUtils.numericDataMenuItems(this.trackView))
+
+        return items
+    }
+
+    /**
+     * Returns a MergedFeatureCollection containing an array of features for the specified range, 1 for each track.
+     */
     async getFeatures(chr, bpStart, bpEnd, bpPerPixel) {
 
         const promises = this.tracks.map((t) => t.getFeatures(chr, bpStart, bpEnd, bpPerPixel))
-        return Promise.all(promises)
+        const featureArrays = await Promise.all(promises)
+        return new MergedFeatureCollection(featureArrays)
     }
 
     draw(options) {
 
-        var i, len, mergedFeatures, trackOptions, dataRange
+        const mergedFeatures = options.features    // A MergedFeatureCollection
 
-        mergedFeatures = options.features    // Array of feature arrays, 1 for each track
-
-        dataRange = autoscale(options.referenceFrame.chr, mergedFeatures)
-
-        //IGVGraphics.fillRect(options.context, 0, options.pixelTop, options.pixelWidth, options.pixelHeight, {'fillStyle': "rgb(255, 255, 255)"});
-
-        for (i = 0, len = this.tracks.length; i < len; i++) {
-
-            trackOptions = Object.assign({}, options)
-            trackOptions.features = mergedFeatures[i]
-            this.tracks[i].dataRange = dataRange
+        for (let i = 0, len = this.tracks.length; i < len; i++) {
+            const trackOptions = Object.assign({}, options)
+            trackOptions.features = mergedFeatures.featureArrays[i]
+            this.tracks[i].dataRange = this.dataRange
+            this.tracks[i].flipAxis = this.flipAxis
+            this.tracks[i].logScale = this.logScale
+            if (this.graphType) {
+                this.tracks[i].graphType = this.graphType
+            }
             this.tracks[i].draw(trackOptions)
         }
-
     }
 
-    paintAxis(ctx, pixelWidth, pixelHeight) {
+    popupData(clickState) {
 
-        var i, len, autoscale, track
+        if(clickState.viewport && clickState.viewport.cachedFeatures) {
 
-        autoscale = true   // Hardcoded for now
+            const featuresArray = clickState.viewport.cachedFeatures.featureArrays
 
-        for (i = 0, len = this.tracks.length; i < len; i++) {
+            if (featuresArray && featuresArray.length === this.tracks.length) {
+                // Array of feature arrays, 1 for each track
+                const popupData = []
+                for (let i = 0; i < this.tracks.length; i++) {
+                    if (i > 0) popupData.push('<hr/>')
+                    popupData.push(`<div style=background-color:rgb(245,245,245);border-bottom-style:dashed;border-bottom-width:1px;padding-bottom:5px;padding-top:10px;font-weight:bold;font-size:larger >${this.tracks[i].name}</div>`)
+                    const trackPopupData = this.tracks[i].popupData(clickState, featuresArray[i])
+                    popupData.push(...trackPopupData)
 
-            track = this.tracks[i]
-
-            if (typeof track.paintAxis === 'function') {
-                track.paintAxis(ctx, pixelWidth, pixelHeight)
-                if (autoscale) break
+                }
+                return popupData
             }
         }
     }
 
-    popupData(clickState, features) {
+    clickedFeatures(clickState) {
 
-        const featuresArray = features || clickState.viewport.getCachedFeatures()
 
-        if (featuresArray && featuresArray.length === this.tracks.length) {
-            // Array of feature arrays, 1 for each track
-            const popupData = []
-            for (let i = 0; i < this.tracks.length; i++) {
-                if (i > 0) popupData.push('<hr/>')
-                popupData.push(`<div style=background-color:rgb(245,245,245);border-bottom-style:dashed;border-bottom-width:1px;padding-bottom:5px;padding-top:10px;font-weight:bold;font-size:larger >${this.tracks[i].name}</div>`)
-                const trackPopupData = this.tracks[i].popupData(clickState, featuresArray[i])
-                popupData.push(...trackPopupData)
+        // We use the cached features rather than method to avoid async load.  If the
+        // feature is not already loaded this won't work,  but the user wouldn't be mousing over it either.
+        const mergedFeaturesCollection = clickState.viewport.cachedFeatures
 
-            }
-            return popupData
+        if(!mergedFeaturesCollection) {
+            return [];
         }
+
+        const genomicLocation = clickState.genomicLocation
+        const clickedFeatures = [];
+        for(let features of mergedFeaturesCollection.featureArrays) {
+            // When zoomed out we need some tolerance around genomicLocation
+            const tolerance = (clickState.referenceFrame.bpPerPixel > 0.2) ? 3 * clickState.referenceFrame.bpPerPixel : 0.2
+            const ss = genomicLocation - tolerance
+            const ee = genomicLocation + tolerance
+            const tmp = (FeatureUtils.findOverlapping(features, ss, ee))
+            for(let f of tmp) {
+                clickedFeatures.push(f)
+            }
+        }
+        return clickedFeatures;
     }
 
 
-    supportsWholeGenome() {
-        const b = this.tracks.every(track => track.supportsWholeGenome())
-        return b
+    get supportsWholeGenome() {
+        return this.tracks.every(track => track.supportsWholeGenome)
     }
 }
 
-function autoscale(chr, featureArrays) {
 
+class MergedFeatureCollection {
 
-    var min = 0,
-        max = -Number.MAX_VALUE,
-        allValues
+    constructor(featureArrays) {
+        this.featureArrays = featureArrays
+    }
 
-    // if (chr === 'all') {
-    //     allValues = [];
-    //     featureArrays.forEach(function (features) {
-    //         features.forEach(function (f) {
-    //             if (!Number.isNaN(f.value)) {
-    //                 allValues.push(f.value);
-    //             }
-    //         });
-    //     });
-    //
-    //     min = Math.min(0, IGVMath.percentile(allValues, .1));
-    //     max = IGVMath.percentile(allValues, 99.9);
-    //
-    // }
-    // else {
-    featureArrays.forEach(function (features, i) {
-        features.forEach(function (f) {
-            if (typeof f.value !== 'undefined' && !Number.isNaN(f.value)) {
-                min = Math.min(min, f.value)
-                max = Math.max(max, f.value)
+    getMax(start, end) {
+        let max = -Number.MAX_VALUE
+        for (let a of this.featureArrays) {
+            for (let f of a) {
+                if (typeof f.value !== 'undefined' && !Number.isNaN(f.value)) {
+                    if (f.end < start) {
+                        continue
+                    }
+                    if (f.start > end) {
+                        break
+                    }
+                    max = Math.max(max, f.value)
+                }
             }
-        })
-    })
-    //  }
-    return {min: min, max: max}
+        }
+        return max
+    }
+
 }
 
 export default MergedTrack

@@ -1,7 +1,7 @@
-// Represents a BAM index.
-// Code is based heavily on bam.js, part of the Dalliance Genome Explorer,  (c) Thomas Down 2006-2001.
+// Represents a CSI Bam or Tabix index
 
 import BinaryParser from "../binary.js"
+import {optimizeChunks} from "./indexUtils.js"
 
 const CSI1_MAGIC = 21582659 // CSI\1
 const CSI2_MAGIC = 38359875 // CSI\2
@@ -128,7 +128,7 @@ class CSIIndex {
      * @param max  genomic end position
      * @param return an array of {minv: {filePointer, offset}, {maxv: {filePointer, offset}}
      */
-    blocksForRange(refId, min, max) {
+    chunksForRange(refId, min, max) {
 
         const ba = this.indices[refId]
         if (!ba) {
@@ -143,10 +143,9 @@ class CSIIndex {
                 for (let bin = binRange[0]; bin <= binRange[1]; bin++) {
                     if (ba.binIndex[bin]) {
                         const binChunks = ba.binIndex[bin]
-                        const nchnk = binChunks.length
-                        for (let c = 0; c < nchnk; ++c) {
-                            const cs = binChunks[c][0]
-                            const ce = binChunks[c][1]
+                        for (let c of binChunks) {
+                            const cs = c[0]
+                            const ce = c[1]
                             chunks.push({minv: cs, maxv: ce, bin: bin})
                         }
                     }
@@ -164,7 +163,7 @@ class CSIIndex {
     reg2bins(beg, end) {
         beg -= 1 // < convert to 1-based closed
         if (beg < 1) beg = 1
-        if (end > 2 ** 50) end = 2 ** 34 // 17 GiB ought to be enough for anybody
+        if (end > 2 ** 34) end = 2 ** 34 // 17 GiB ought to be enough for anybody
         end -= 1
         let l = 0
         let t = 0
@@ -173,80 +172,23 @@ class CSIIndex {
         for (; l <= this.depth; s -= 3, t += (1 << l * 3), l += 1) {
             const b = t + (beg >> s)
             const e = t + (end >> s)
-            if (e - b + bins.length > this.maxBinNumber)
-                throw new Error(
-                    `query ${beg}-${end} is too large for current binning scheme (shift ${this.minShift}, depth ${this.depth}), try a smaller query or a coarser index binning scheme`,
-                )
-            //for (let i = b; i <= e; i += 1) bins.push(i)
+            //
+            // ITS NOT CLEAR WHERE THIS TEST CAME FROM,  but maxBinNumber is never set, and its not clear what it represents.
+            // if (e - b + bins.length > this.maxBinNumber)
+            //     throw new Error(
+            //         `query ${beg}-${end} is too large for current binning scheme (shift ${this.minShift}, depth ${this.depth}), try a smaller query or a coarser index binning scheme`,
+            //     )
+            //
             bins.push([b, e])
         }
         return bins
     }
 
-    // function reg2bins(beg, end, min_shift, depth) {
-    //     let l, t, n, s = min_shift + depth * 3;
-    //     const bins = [];
-    //     for (--end, l = n = t = 0; l <= depth; s -= 3, t += 1 << l * 3, ++l) {
-    //         let b = t + (beg >> s), e = t + (end >> s), i;
-    //         for (i = b; i <= e; ++i) bins[n++] = i;
-    //     }
-    //     return bins;
-    // }
 
     bin_limit() {
         return ((1 << (this.depth + 1) * 3) - 1) / 7
     }
 
 }
-
-function optimizeChunks(chunks, lowest) {
-
-    const mergedChunks = []
-    let lastChunk = null
-
-    if (chunks.length === 0) return chunks
-
-    chunks.sort(function (c0, c1) {
-        const dif = c0.minv.block - c1.minv.block
-        if (dif !== 0) {
-            return dif
-        } else {
-            return c0.minv.offset - c1.minv.offset
-        }
-    })
-
-    chunks.forEach(function (chunk) {
-
-        if (!lowest || chunk.maxv.isGreaterThan(lowest)) {
-            if (lastChunk === null) {
-                mergedChunks.push(chunk)
-                lastChunk = chunk
-            } else {
-                if (canMerge(lastChunk, chunk)) {
-                    if (chunk.maxv.isGreaterThan(lastChunk.maxv)) {
-                        lastChunk.maxv = chunk.maxv
-                    }
-                } else {
-                    mergedChunks.push(chunk)
-                    lastChunk = chunk
-                }
-            }
-        } else {
-            //console.log(`skipping chunk ${chunk.minv.block} - ${chunk.maxv.block}`)
-        }
-    })
-
-    return mergedChunks
-}
-
-function canMerge(chunk1, chunk2) {
-    return (chunk2.minv.block - chunk1.maxv.block) < 65000 &&
-        (chunk2.maxv.block - chunk1.minv.block) < 5000000
-    // lastChunk.minv.block === lastChunk.maxv.block &&
-    // lastChunk.maxv.block === chunk.minv.block &&
-    // chunk.minv.block === chunk.maxv.block
-
-}
-
 
 export {parseCsiIndex}

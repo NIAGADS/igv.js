@@ -24,7 +24,7 @@
  */
 
 import {DOMUtils, StringUtils} from "../node_modules/igv-utils/src/index.js"
-import {prettyBasePairNumber, validateLocusExtent} from "./util/igvUtils.js"
+import {prettyBasePairNumber, validateGenomicExtent} from "./util/igvUtils.js"
 import GtexSelection from "./gtex/gtexSelection.js"
 
 // Reference frame classes.  Converts domain coordinates (usually genomic) to pixel coordinates
@@ -42,6 +42,19 @@ class ReferenceFrame {
 
         this.bpPerPixel = bpPerPixel
         this.id = DOMUtils.guid()
+    }
+
+    /**
+     * Extend this frame to accomodate the given locus.  Used th CircularView methods to merge 2 frames.
+     * @param locus
+     */
+    extend(locus) {
+        const newStart = Math.min(locus.start, this.start)
+        const newEnd = Math.max(locus.end, this.end)
+        const ratio = (newEnd - newStart) / (this.end - this.start)
+        this.start = newStart
+        this.end = newEnd
+        this.bpPerPixel *= ratio
     }
 
     calculateEnd(pixels) {
@@ -68,28 +81,30 @@ class ReferenceFrame {
 
     /**
      * Shift frame by stated pixels.  Return true if view changed, false if not.
+     *
      * @param pixels
+     * @param clamp -- if true "clamp" shift to prevent panning off edge of chromosome.  This is disabled if "show soft clipping" is on
      * @param viewportWidth
      */
-    shiftPixels(pixels, viewportWidth) {
+    shiftPixels(pixels, viewportWidth, clamp) {
 
         const currentStart = this.start
-
         const deltaBP = pixels * this.bpPerPixel
 
         this.start += deltaBP
-        this.clampStart(viewportWidth)
 
-        this.end += deltaBP
-        const {bpLength} = this.genome.getChromosome(this.chr)
-        this.end = Math.min(bpLength, this.end)
+        if(clamp) {
+            this.clampStart(viewportWidth)
+        }
+
+        this.end = this.start + viewportWidth * this.bpPerPixel
 
         return currentStart !== this.start
     }
 
     clampStart(viewportWidth) {
         // clamp left
-        const min = this.genome.getChromosome(this.chr).bpStart || 0
+        const min = (this.genome.getChromosome(this.chr).bpStart || 0)
         this.start = Math.max(min, this.start)
 
         // clamp right
@@ -130,7 +145,7 @@ class ReferenceFrame {
 
         const viewChanged = start !== this.start || bpPerPixel !== this.bpPerPixel
         if (viewChanged) {
-            await browser.updateViews(this)
+            await browser.updateViews(true)
         }
 
     }
@@ -175,7 +190,7 @@ class ReferenceFrame {
     }
 }
 
-function createReferenceFrameList(loci, genome, browserFlanking, minimumBases, viewportWidth) {
+function createReferenceFrameList(loci, genome, browserFlanking, minimumBases, viewportWidth, isSoftclipped) {
 
     return loci.map(locus => {
 
@@ -186,8 +201,10 @@ function createReferenceFrameList(loci, genome, browserFlanking, minimumBases, v
         }
 
         // Validate the range.  This potentionally modifies start & end of locus.
-        const chromosome = genome.getChromosome(locus.chr)
-        validateLocusExtent(chromosome.bpLength, locus, minimumBases)
+        if(!isSoftclipped) {
+            const chromosome = genome.getChromosome(locus.chr)
+            validateGenomicExtent(chromosome.bpLength, locus, minimumBases)
+        }
 
         const referenceFrame = new ReferenceFrame(genome,
             locus.chr,

@@ -27,7 +27,6 @@ import {loadFasta} from "./fasta.js"
 import Cytoband from "./cytoband.js"
 import {buildOptions, isDataURL} from "../util/igvUtils.js"
 import {BGZip, igvxhr, StringUtils} from "../../node_modules/igv-utils/src/index.js"
-import {Alert} from '../../node_modules/igv-ui/dist/igv-ui.js'
 import version from "../version.js"
 
 const DEFAULT_GENOMES_URL = "https://igv.org/genomes/genomes.json"
@@ -43,17 +42,19 @@ const GenomeUtils = {
         const aliasURL = options.aliasURL
         const sequence = await loadFasta(options)
 
-        let cytobands
-        if (cytobandUrl) {
-            cytobands = await loadCytobands(cytobandUrl, sequence.config)
-        }
-
         let aliases
         if (aliasURL) {
             aliases = await loadAliases(aliasURL, sequence.config)
         }
 
-        return new Genome(options, sequence, cytobands, aliases)
+        const genome = new Genome(options, sequence, aliases)
+
+        // Delay loading cytbands untils after genome initialization to use chromosome aliases (1 vs chr1, etc).
+        if (cytobandUrl) {
+            genome.cytobands  = await loadCytobands(cytobandUrl, sequence.config, genome)
+        }
+
+        return genome
     },
 
     initializeGenomes: async function (config) {
@@ -108,7 +109,7 @@ const GenomeUtils = {
     },
 
     // Expand a genome id to a reference object, if needed
-    expandReference: function (idOrConfig) {
+    expandReference: function (alert, idOrConfig) {
 
         // idOrConfig might be json
         if (StringUtils.isString(idOrConfig) && idOrConfig.startsWith("{")) {
@@ -133,7 +134,7 @@ const GenomeUtils = {
             const knownGenomes = GenomeUtils.KNOWN_GENOMES
             const reference = knownGenomes[genomeID]
             if (!reference) {
-                Alert.presentAlert(new Error(`Unknown genome id: ${genomeID}`), undefined)
+                alert.present(new Error(`Unknown genome id: ${genomeID}`), undefined)
             }
             return reference
         } else {
@@ -145,14 +146,13 @@ const GenomeUtils = {
 
 class Genome {
 
-    constructor(config, sequence, ideograms, aliases) {
+    constructor(config, sequence, aliases) {
 
         this.config = config
-        this.id = config.id
+        this.id = config.id || generateGenomeID(config)
         this.sequence = sequence
         this.chromosomeNames = sequence.chromosomeNames
         this.chromosomes = sequence.chromosomes  // An object (functions as a dictionary)
-        this.ideograms = ideograms
         this.featureDB = {}   // Hash of name -> feature, used for search function.
 
         this.wholeGenomeView = config.wholeGenomeView === undefined || config.wholeGenomeView
@@ -242,7 +242,7 @@ class Genome {
     }
 
     getCytobands(chr) {
-        return this.ideograms ? this.ideograms[chr] : null
+        return this.cytobands ? this.cytobands[chr] : null
     }
 
     getLongestChromosome() {
@@ -354,11 +354,12 @@ class Genome {
     }
 
     async getSequence(chr, start, end) {
+        chr = this.getChromosomeName(chr)
         return this.sequence.getSequence(chr, start, end)
     }
 }
 
-async function loadCytobands(cytobandUrl, config) {
+async function loadCytobands(cytobandUrl, config, genome) {
 
     let data
     if (isDataURL(cytobandUrl)) {
@@ -384,7 +385,7 @@ async function loadCytobands(cytobandUrl, config) {
     const lines = splitLines(data)
     for (let line of lines) {
         var tokens = line.split("\t")
-        var chr = tokens[0]
+        var chr = genome.getChromosomeName(tokens[0])
         if (!lastChr) lastChr = chr
 
         if (chr !== lastChr) {
@@ -469,6 +470,18 @@ function constructWG(genome, config) {
         return /^\d+$/.test(val)
     }
 
+}
+
+function generateGenomeID(config) {
+    if (config.id !== undefined) {
+        return config.id
+    } else if (config.fastaURL && StringUtils.isString(config.fastaURL)) {
+        return config.fastaURL
+    } else if (config.fastaURL && config.fastaURL.name) {
+        return config.fastaURL.name
+    } else {
+        return ("0000" + (Math.random() * Math.pow(36, 4) << 0).toString(36)).slice(-4)
+    }
 }
 
 export default GenomeUtils

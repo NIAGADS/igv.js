@@ -109,6 +109,7 @@ class SegTrack extends TrackBase {
     async postInit() {
         if (typeof this.featureSource.getHeader === "function") {
             this.header = await this.featureSource.getHeader()
+            if(this.disposed) return;   // This track was removed during async load
         }
         // Set properties from track line
         if (this.header) {
@@ -177,7 +178,7 @@ class SegTrack extends TrackBase {
 
     draw({context, renderSVG, pixelTop, pixelWidth, pixelHeight, features, bpPerPixel, bpStart}) {
 
-        IGVGraphics.fillRect(context, 0, 0, pixelWidth, pixelHeight, {'fillStyle': "rgb(255, 255, 255)"})
+        IGVGraphics.fillRect(context, 0, pixelTop, pixelWidth, pixelHeight, {'fillStyle': "rgb(255, 255, 255)"})
 
         if (features && features.length > 0) {
 
@@ -403,9 +404,9 @@ class SegTrack extends TrackBase {
 
     }
 
-    clickedFeatures(clickState, features) {
+    clickedFeatures(clickState) {
 
-        const allFeatures = super.clickedFeatures(clickState, features)
+        const allFeatures = super.clickedFeatures(clickState)
         const y = clickState.y
         return allFeatures.filter(function (feature) {
             const rect = feature.pixelRect
@@ -414,9 +415,16 @@ class SegTrack extends TrackBase {
 
     }
 
+    hoverText(clickState) {
+        const features = this.clickedFeatures(clickState)
+        if(features && features.length > 0) {
+            return `${features[0].sample}: ${features[0].value}`
+        }
+    }
+
     popupData(clickState, featureList) {
 
-        featureList = this.clickedFeatures(clickState)
+        if(featureList === undefined) featureList = this.clickedFeatures(clickState)
 
         const items = []
 
@@ -454,7 +462,7 @@ class SegTrack extends TrackBase {
 
         const sortHandler = (sort) => {
             const viewport = clickState.viewport
-            const features = viewport.getCachedFeatures()
+            const features = viewport.cachedFeatures
             this.sortSamples(sort.chr, sort.start, sort.end, sort.direction, features)
         }
 
@@ -482,7 +490,7 @@ class SegTrack extends TrackBase {
 
     }
 
-    supportsWholeGenome() {
+    get supportsWholeGenome() {
         return (this.config.indexed === false || !this.config.indexURL) && this.config.supportsWholeGenome !== false
     }
 

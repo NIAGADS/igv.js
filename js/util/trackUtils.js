@@ -23,8 +23,10 @@
  * THE SOFTWARE.
  */
 
-import {StringUtils} from "../../node_modules/igv-utils/src/index.js"
+import {igvxhr, StringUtils} from "../../node_modules/igv-utils/src/index.js"
 import FileFormats from "./fileFormats.js"
+import {isHiccups} from "../feature/decode/bedpe.js"
+import {buildOptions} from "./igvUtils.js"
 
 const knownFileExtensions = new Set([
 
@@ -45,6 +47,9 @@ const knownFileExtensions = new Set([
     "vcf",
     "bb",
     "bigbed",
+    "biginteract",
+    "biggenepred",
+    "bignarrowpeak",
     "bw",
     "bigwig",
     "bam",
@@ -59,7 +64,12 @@ const knownFileExtensions = new Set([
     "cram",
     "gwas",
     "maf",
-    "mut"
+    "mut",
+    "tsv",
+    "hiccups",
+    "fasta",
+    "fa",
+    "fna"
 ])
 
 /**
@@ -132,6 +142,10 @@ function inferFileFormat(fn) {
             return "bigwig"
         case "bb":
             return "bigbed"
+        case "fasta":
+        case "fa":
+        case "fna":
+            return "fasta"
         default:
             if (knownFileExtensions.has(ext)) {
                 return ext
@@ -185,8 +199,10 @@ function inferTrackType(config) {
             case "bam":
             case "cram":
                 return "alignment"
+            case "hiccups":
             case "bedpe":
             case "bedpe-loop":
+            case "biginteract":
                 return "interact"
             case "bp":
                 return "arc"
@@ -195,7 +211,11 @@ function inferTrackType(config) {
             case "bed":
             case "bigbed":
             case "bb":
+            case "biggenepred":
+            case "bignarrowpeak":
                 return "bedtype"
+            case "fasta":
+                return "sequence"
             default:
                 return "annotation"
         }
@@ -233,5 +253,28 @@ function translateDeprecatedTypes(config) {
     }
 }
 
+/**
+ * Attempt to infer the file format by reading a few lines from the header.  Currently this only supports "tsv" extensions,
+ * it was added specifically for "hiccups" type tsv files in ENCODE.  Might be expanded in the future.
+ *
+ * @param url
+ * @returns {Promise<void>}
+ */
+async function inferFileFormatFromHeader(config) {
 
-export {knownFileExtensions, getFormat, inferFileFormat, inferTrackType, inferIndexPath}
+    if (config.url) {
+        const firstBytes = await igvxhr.loadString(config.url, buildOptions(config, {range: {start: 0, size: 1000}}))
+        if(firstBytes) {
+            const columnNames = firstBytes.split('\n')[0].split('\t')
+            if(isHiccups(columnNames)) {
+                return "hiccups"
+            }
+        }
+    }
+
+    return undefined
+
+}
+
+
+export {knownFileExtensions, getFormat, inferFileFormat, inferFileFormatFromHeader, inferTrackType, inferIndexPath}
