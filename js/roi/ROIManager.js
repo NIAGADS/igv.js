@@ -134,9 +134,10 @@ class ROIManager {
         const columns = browser.columnContainer.querySelectorAll('.igv-column')
 
         for (let i = 0; i < columns.length; i++) {
-
+            //span you're looking at
             let {chr, start: viewStart, end: viewEnd, bpPerPixel} = browser.referenceFrameList[i]
 
+            //removing rois not in screen
             const elements = columns[i].querySelectorAll('.igv-roi-region')
             for (let el of elements) {
                 const regionKey = el.dataset.region
@@ -301,6 +302,18 @@ class ROIManager {
             this[key] = undefined
         }
 
+    }
+
+    async renderSVGContext(context, {deltaX, deltaY}) {
+        let {chr, start: viewStart, end: viewEnd, bpPerPixel} = this.browser.referenceFrameList[0]
+
+        let status = false
+        for(let roiSet of this.roiSets) {
+            let features = await roiSet.getAllFeatures()
+            
+            status = await roiSet.drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, this.top, deltaY, features[chr])
+        }
+        return status;
     }
 }
 

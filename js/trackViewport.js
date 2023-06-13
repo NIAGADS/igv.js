@@ -336,7 +336,9 @@ class TrackViewport extends Viewport {
             drawConfiguration.features = features
             this.trackView.track.draw(drawConfiguration)
         }
+        //handles if it is an empty array
         if (roiFeatures && roiFeatures.length > 0) {
+            //makes it here if pre loaded ROI
             for (let r of roiFeatures) {
                 drawConfiguration.features = r.features
                 r.track.draw(drawConfiguration)
