@@ -305,6 +305,7 @@ class ROIManager {
     }
 
     async renderSVGContext(context, {deltaX, deltaY}) {
+        //assumes there is only one reference frame
         let {chr, start: viewStart, end: viewEnd, bpPerPixel} = this.browser.referenceFrameList[0]
 
         let status = false
@@ -313,6 +314,7 @@ class ROIManager {
             
             status = await roiSet.drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, this.top, deltaY, features[chr])
         }
+        console.log("this should happen first");
         return status;
     }
 }

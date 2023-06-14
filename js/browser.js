@@ -346,34 +346,38 @@ class Browser {
         }
         //iterate over roisets in the this.roiManager
         let status = await this.roiManager.renderSVGContext(context, {deltaX: 0, deltaY: y})
-        console.log(status)
+        console.log("this should happen second");
         // reset height to trim away unneeded svg canvas real estate. Yes, a bit of a hack.
         context.setHeight(height)
 
         return context.getSerializedSvg(true)
     }
 
-     renderSVG($container) {
-        const svg = this.toSVG()
-        $container.empty()
-        $container.append(svg)
-
-        return svg
+    renderSVG($container) {
+        this.toSVG().then(svg => {
+            $container.empty()
+            $container.append(svg)
+            return svg
+        }).catch(error => {
+            console.error(error);
+        })
     }
 
-     saveSVGtoFile(config) {
-
-        let svg = this.toSVG()
-
-        if (config.$container) {
-            config.$container.empty()
-            config.$container.append(svg)
-        }
-
-        const path = config.filename || 'igvjs.svg'
-        const data = URL.createObjectURL(new Blob([svg], {type: "application/octet-stream"}))
-        FileUtils.download(path, data)
+    saveSVGtoFile(config) {
+        this.toSVG().then(svg => {
+            if (config.$container) {
+                config.$container.empty()
+                config.$container.append(svg)
+            }
+    
+            const path = config.filename || 'igvjs.svg'
+            const data = URL.createObjectURL(new Blob([svg], {type: "application/octet-stream"}))
+            FileUtils.download(path, data)
+        }).catch(error => {
+            console.error(error);
+        });
     }
+    
 
     /**
      * Initialize a session from an object, json, or by loading from a file.
