@@ -108,7 +108,7 @@ class ROISet {
     async drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, top, height, features) {
 
         if(!features) {
-            return false
+            return
         }
         for (let { start:regionStartBP, end:regionEndBP } of features) {
             let {
@@ -126,11 +126,9 @@ class ROISet {
             if (regionStartBP > regionEndBP) {
                 break
             }
-
             IGVGraphics.fillRect(context, x, top, width, height, { fillStyle: this.color })
         }
-
-        return true
+        return
     }
 
 }
