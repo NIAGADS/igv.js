@@ -345,12 +345,23 @@ class Browser {
             trackView.renderSVGContext(context, {deltaX: 0, deltaY: -y})
         }
         //iterate over roisets in the this.roiManager
-        let status = await this.roiManager.renderSVGContext(context, {deltaX: 0, deltaY: y})
-        console.log("this should happen second");
+        let {roiHeight, yOffset} = this.calculateROIHeight()
+
+        let status = await this.roiManager.renderSVGContext(context, {deltaX: 0, deltaY: y}, roiHeight, yOffset)
         // reset height to trim away unneeded svg canvas real estate. Yes, a bit of a hack.
         context.setHeight(height)
 
         return context.getSerializedSvg(true)
+    }
+
+    calculateROIHeight() {
+        let roiHeight = 0
+        let yOffset = 0
+        for (let trackView of this.trackViews) {
+            if(trackView.track instanceof RulerTrack) yOffset += trackView.track.height
+            else roiHeight += trackView.track.height
+        }
+        return {roiHeight, yOffset}
     }
 
     renderSVG($container) {

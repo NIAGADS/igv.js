@@ -304,7 +304,7 @@ class ROIManager {
 
     }
 
-    async renderSVGContext(context, {deltaX, deltaY}) {
+    async renderSVGContext(context, {deltaX, deltaY}, height, yOffset) {
         //assumes there is only one reference frame
         let {chr, start: viewStart, end: viewEnd, bpPerPixel} = this.browser.referenceFrameList[0]
 
@@ -312,9 +312,8 @@ class ROIManager {
         for(let roiSet of this.roiSets) {
             let features = await roiSet.getAllFeatures()
             
-            status = await roiSet.drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, this.top, deltaY, features[chr])
+            status = await roiSet.drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, this.top + yOffset, height, features[chr])
         }
-        console.log("this should happen first");
         return status;
     }
 }

@@ -108,13 +108,16 @@ class ROISet {
     async drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, top, height, features) {
 
         if(!features) {
-            return
+            return false
         }
         for (let { start:regionStartBP, end:regionEndBP } of features) {
-            const {
+            let {
                 x,
                 width
             } = screenCoordinates(Math.max(viewStart, regionStartBP), Math.min(viewEnd, regionEndBP), viewStart, bpPerPixel)
+
+            //to apply x offset that comes from SVG
+            x += 50;
             
             if (regionEndBP < regionStartBP) {
                 continue
