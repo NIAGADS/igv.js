@@ -79,6 +79,7 @@ import ROITable from './roi/ROITable.js'
 import ROIMenu from './roi/ROIMenu.js'
 import TrackROISet from "./roi/trackROISet.js"
 import ROITableControl from './ui/roiTableControl.js'
+import SaveJSONButton from "./ui/saveJSONButton.js"
 
 // css - $igv-scrollbar-outer-width: 14px;
 const igv_scrollbar_outer_width = 14
@@ -270,6 +271,8 @@ class Browser {
         if (true === config.showSVGButton) {
             this.svgSaveControl = new SVGSaveControl($toggle_button_container.get(0), this)
         }
+
+        this.saveJSON = new SaveJSONButton($toggle_button_container.get(0), this)
 
         if (config.customButtons) {
             for (let b of config.customButtons) {
