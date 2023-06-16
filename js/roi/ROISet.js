@@ -29,6 +29,7 @@ import FeatureSource from '../feature/featureSource.js'
 import {appleCrayonRGBA} from '../util/colorPalletes.js'
 import {computeWGFeatures} from "../feature/featureUtils.js"
 import * as TrackUtils from "../util/trackUtils.js"
+import IGVGraphics from '../igv-canvas.js'
 
 
 const appleCrayonColorName = 'nickel'
@@ -128,6 +129,32 @@ class ROISet {
         for (let key of Object.keys(this)) {
             this[key] = undefined
         }
+    }
+
+    async drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, top, height, features) {
+
+        if(!features) {
+            return
+        }
+        for (let { start:regionStartBP, end:regionEndBP } of features) {
+            let {
+                x,
+                width
+            } = screenCoordinates(Math.max(viewStart, regionStartBP), Math.min(viewEnd, regionEndBP), viewStart, bpPerPixel)
+
+            //to apply x offset that comes from SVG
+            x += 50;
+            
+            if (regionEndBP < regionStartBP) {
+                continue
+            }
+
+            if (regionStartBP > regionEndBP) {
+                break
+            }
+            IGVGraphics.fillRect(context, x, top, width, height, { fillStyle: this.color })
+        }
+        return
     }
 
 }
