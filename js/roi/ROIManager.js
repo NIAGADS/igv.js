@@ -302,16 +302,14 @@ class ROIManager {
         }
 
     }
-    
-    async renderSVGContext(context, height, rulerOffset) {
-        for(let referenceFrame of this.browser.referenceFrameList) {
-            let {chr, start: viewStart, end: viewEnd, bpPerPixel} = referenceFrame
 
-            for(let roiSet of this.roiSets) {
-                let features = await roiSet.getAllFeatures()
-                
-                await roiSet.drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, this.top + rulerOffset, height, features[chr])
-            }
+    async renderSVGContext(context, height, rulerOffset) {
+        let {chr, start: viewStart, end: viewEnd, bpPerPixel} = this.browser.referenceFrameList[0]
+
+        for(let roiSet of this.roiSets) {
+            let features = await roiSet.getAllFeatures()
+            
+            await roiSet.drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, this.top + rulerOffset, height, features[chr])
         }
         return
     }
