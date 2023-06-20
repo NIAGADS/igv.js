@@ -134,10 +134,8 @@ class ROIManager {
         const columns = browser.columnContainer.querySelectorAll('.igv-column')
 
         for (let i = 0; i < columns.length; i++) {
-            //span you're looking at
             let {chr, start: viewStart, end: viewEnd, bpPerPixel} = browser.referenceFrameList[i]
 
-            //removing rois not in screen
             const elements = columns[i].querySelectorAll('.igv-roi-region')
             for (let el of elements) {
                 const regionKey = el.dataset.region
