@@ -309,7 +309,7 @@ class ROIManager {
         for(let roiSet of this.roiSets) {
             let features = await roiSet.getAllFeatures()
             
-            await roiSet.drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, this.top + rulerOffset, height, features[chr])
+            roiSet.drawSVGWithContext(context, viewStart, viewEnd, bpPerPixel, this.top + rulerOffset, height, features[chr])
         }
         return
     }
