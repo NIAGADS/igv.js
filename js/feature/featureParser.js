@@ -114,8 +114,9 @@ class FeatureParser {
                     columnNames = tokens   // Possible column names
                 }
             } else {
-                if(this.decode === undefined){
-                    // All directives that could change the format, and thus decoder, should have been read by now.
+                 // All directives that could change the format, and thus decoder, should have been read by now.
+                
+                if (this.decode === undefined) {  // assign a decoder based on file format   
                     this.setDecoder(header.format)
                 }
 
