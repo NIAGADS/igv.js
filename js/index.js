@@ -32,6 +32,7 @@ import TrackBase from "../js/trackBase.js";
 import {BinnedColorScale, ConstantColorScale, GradientColorScale} from "./util/colorScale.js"
 import {randomColor as randomColorPalette, ColorTable, PaletteColorTable, appleCrayonPalette} from "./util/colorPalletes";
 import { makeVCFChords} from "./jbrowse/circularViewUtils";
+import { UCSCBedFeature } from "./feature/decode/ucsc.js";
 
 const setApiKey = igvxhr.setApiKey;
 
@@ -79,5 +80,6 @@ export default {
   IGVColor,
   StringUtils,
   createCheckbox,
-  appleCrayonPalette
+  appleCrayonPalette,
+  UCSCBedFeature
 };

@@ -456,6 +456,6 @@ class UCSCBedFeature {
 
 export {
     decodeBed, decodeBedGraph, decodeGenePred, decodeGenePredExt, decodePeak, decodeReflat, decodeRepeatMasker,
-    decodeSNP, decodeWig
+    decodeSNP, decodeWig, UCSCBedFeature
 }
 
