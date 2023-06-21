@@ -1641,23 +1641,7 @@ class Browser {
 
     toJSON() {
 
-        const json = {
-            "version": version()
-        }
-
-        if (this.showSampleNames !== undefined) {
-            json['showSampleNames'] = this.showSampleNames
-        }
-        if (this.sampleNameViewportWidth !== defaultSampleNameViewportWidth) {
-            json['sampleNameViewportWidth'] = this.sampleNameViewportWidth
-        }
-
-        json["reference"] = this.genome.toJSON()
-        if (FileUtils.isFilePath(json.reference.fastaURL)) {
-            throw new Error(`Error. Sessions cannot include local file references ${json.reference.fastaURL.name}.`)
-        } else if (FileUtils.isFilePath(json.reference.indexURL)) {
-            throw new Error(`Error. Sessions cannot include local file references ${json.reference.indexURL.name}.`)
-        }
+        const json = {}
 
         // Build locus array (multi-locus view).  Use the first track to extract the loci, any track could be used.
         const locus = []
