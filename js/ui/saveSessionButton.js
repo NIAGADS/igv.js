@@ -1,11 +1,11 @@
 import {DOMUtils} from '../../node_modules/igv-utils/src/index.js'
 import { FileUtils } from '../../node_modules/igv-utils/src/index.js'
 
-const SaveJSONButton = function (parent, browser) {
+const SaveSessionButton = function (parent, browser) {
     const button = DOMUtils.div({class: 'igv-navbar-button'})
     parent.append(button)
 
-    button.textContent = 'Save JSON'
+    button.textContent = 'Save Session'
     button.addEventListener('click', () => downloadJSONFile(browser.toJSON()));
 }
 
@@ -16,4 +16,4 @@ const downloadJSONFile = (json) => {
     FileUtils.download(path, data)
 }
 
-export default SaveJSONButton
+export default SaveSessionButton
