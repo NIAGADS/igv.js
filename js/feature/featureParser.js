@@ -114,10 +114,14 @@ class FeatureParser {
                     columnNames = tokens   // Possible column names
                 }
             } else {
-                 // All directives that could change the format, and thus decoder, should have been read by now.
+                // All directives that could change the format, and thus decoder, should have been read by now.
                 
                 if (this.decode === undefined) {  // assign a decoder based on file format   
                     this.setDecoder(header.format)
+                }
+                else {
+                    //for custom decoders which may require format information
+                    header.format = this.config.format
                 }
 
                 // If the line can be parsed as a feature assume we are beyond the header, if any
