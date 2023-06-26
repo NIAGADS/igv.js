@@ -79,6 +79,7 @@ import ROITable from './roi/ROITable.js'
 import ROIMenu from './roi/ROIMenu.js'
 import TrackROISet from "./roi/trackROISet.js"
 import ROITableControl from './ui/roiTableControl.js'
+import SaveSessionButton from "./ui/saveSessionButton.js"
 
 // css - $igv-scrollbar-outer-width: 14px;
 const igv_scrollbar_outer_width = 14
@@ -270,6 +271,8 @@ class Browser {
         if (true === config.showSVGButton) {
             this.svgSaveControl = new SVGSaveControl($toggle_button_container.get(0), this)
         }
+
+        this.saveSession = new SaveSessionButton($toggle_button_container.get(0), this)
 
         if (config.customButtons) {
             for (let b of config.customButtons) {
@@ -1638,23 +1641,7 @@ class Browser {
 
     toJSON() {
 
-        const json = {
-            "version": version()
-        }
-
-        if (this.showSampleNames !== undefined) {
-            json['showSampleNames'] = this.showSampleNames
-        }
-        if (this.sampleNameViewportWidth !== defaultSampleNameViewportWidth) {
-            json['sampleNameViewportWidth'] = this.sampleNameViewportWidth
-        }
-
-        json["reference"] = this.genome.toJSON()
-        if (FileUtils.isFilePath(json.reference.fastaURL)) {
-            throw new Error(`Error. Sessions cannot include local file references ${json.reference.fastaURL.name}.`)
-        } else if (FileUtils.isFilePath(json.reference.indexURL)) {
-            throw new Error(`Error. Sessions cannot include local file references ${json.reference.indexURL.name}.`)
-        }
+        const json = {}
 
         // Build locus array (multi-locus view).  Use the first track to extract the loci, any track could be used.
         const locus = []
