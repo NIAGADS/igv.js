@@ -1671,6 +1671,10 @@ class Browser {
         const errors = []
         for (let {track} of this.trackViews) {
             try {
+                //TODO: temporary solution to not export ENSEMBL_GENE and REFSEQ_GENE
+                if(track.id === "ENSEMBL_GENE" || track.id === "REFSEQ_GENE"){
+                    continue
+                }
                 let config
                 if (typeof track.getState === "function") {
                     config = track.getState()
