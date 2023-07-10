@@ -47,6 +47,9 @@ import ROITable from './roi/ROITable.js'
 import ROIMenu from './roi/ROIMenu.js'
 import TrackROISet from "./roi/trackROISet.js"
 import ROITableControl from './ui/roiTableControl.js'
+
+import SaveSessionButton from "./ui/saveSessionButton.js"
+
 import SampleInfo from "./sample/sampleInfo.js"
 import SampleInfoViewport from "./sample/sampleInfoViewport.js"
 import HicFile from "./hic/straw/hicFile.js"
@@ -273,6 +276,8 @@ class Browser {
             this.svgSaveControl = new SVGSaveControl($toggle_button_container.get(0), this)
         }
 
+        this.saveSession = new SaveSessionButton($toggle_button_container.get(0), this)
+
         if (config.customButtons) {
             for (let b of config.customButtons) {
                 new CustomButton($toggle_button_container.get(0), this, b)
@@ -352,7 +357,7 @@ class Browser {
      * Render browse display as SVG
      * @returns {string}
      */
-    toSVG() {
+    async toSVG() {
 
         const {y, width, height} = this.columnContainer.getBoundingClientRect()
 
@@ -392,31 +397,42 @@ class Browser {
         context.setHeight(height)
 
         return context.getSerializedSvg(true)
+    }
 
+    calculateROIPosition() {
+        let roiHeight = 0
+        let rulerOffset = 0
+        for (let trackView of this.trackViews) {
+            if(trackView.track instanceof RulerTrack) rulerOffset += trackView.track.height
+            else roiHeight += trackView.track.height
+        }
+        return {roiHeight, rulerOffset}
     }
 
     renderSVG($container) {
-        const svg = this.toSVG()
-        $container.empty()
-        $container.append(svg)
-
-        return svg
+        this.toSVG().then(svg => {
+            $container.empty()
+            $container.append(svg)
+            return svg
+        }).catch(error => {
+            console.error(error);
+        })
     }
 
     saveSVGtoFile(config) {
-
-        let svg = this.toSVG()
-
-        if (config.$container) {
-            config.$container.empty()
-            config.$container.append(svg)
-        }
-
-        const path = config.filename || 'igvjs.svg'
-        const data = URL.createObjectURL(new Blob([svg], {type: "application/octet-stream"}))
-        FileUtils.download(path, data)
+        this.toSVG().then(svg => {
+            if (config.$container) {
+                config.$container.empty()
+                config.$container.append(svg)
+            }
+    
+            const path = config.filename || 'igvjs.svg'
+            const data = URL.createObjectURL(new Blob([svg], {type: "application/octet-stream"}))
+            FileUtils.download(path, data)
+        }).catch(error => {
+            console.error(error);
+        });
     }
-
     /**
      * Initialize a session from an object, json, or by loading from a file.
      *
@@ -1778,6 +1794,10 @@ class Browser {
         const errors = []
         for (let {track} of this.trackViews) {
             try {
+                //TODO: temporary solution to not export ENSEMBL_GENE and REFSEQ_GENE
+                if(track.id === "ENSEMBL_GENE" || track.id === "REFSEQ_GENE"){
+                    continue
+                }
                 let config
                 if (typeof track.getState === "function") {
                     config = track.getState()

@@ -1,6 +1,6 @@
 {
   "name": "igv",
-  "version": "2.16.0",
+  "version": "NIAGADS-2.16.0",
   "main": "dist/igv.esm.js",
   "browser": "dist/igv.js",
   "module": "dist/igv.esm.js",
@@ -23,8 +23,11 @@
   "contributors": [
     {
       "name": "Douglass Turner"
+    },
+    {
+        "name": "NIAGADS"
     }
-  ],
+],
   "bugs": {
     "url": "https://github.com/igvteam/igv.js/issues"
   },

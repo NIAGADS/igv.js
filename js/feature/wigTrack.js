@@ -195,6 +195,7 @@ class WigTrack extends TrackBase {
 
                 let lastPixelEnd = -1
                 let lastY
+
                 const y0 = yScale(0)
                 for (let f of features) {
 
@@ -217,6 +218,7 @@ class WigTrack extends TrackBase {
                         IGVGraphics.fillCircle(ctx, px, y, pointSize / 2, {"fillStyle": color, "strokeStyle": color})
 
                     } else if (this.graphType === "line") {
+
                         if (lastY != undefined) {
                             IGVGraphics.strokeLine(ctx, lastPixelEnd, lastY, x, y, {
                                 "fillStyle": color,

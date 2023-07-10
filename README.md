@@ -18,6 +18,7 @@ Below are examples and a quickstart guide.  See the [Wiki](https://github.com/ig
 
 # Examples
  
+
 ***[Alignments](https://igv.org/web/release/2.15.5/examples/cram-vcf.html)***
 
 ***[Interactions](https://igv.org/web/release/2.15.5/examples/interact.html)***
@@ -40,6 +41,7 @@ igv.js consists of a single javascript file with no external dependencies.
 
 Pre-built files for script include, AMD, or CJS module systems (igv.min.js) and an ES6 module (igv.esm.min.js)
 can be downloaded from [https://cdn.jsdelivr.net/npm/igv@2.15.5/dist/](https://cdn.jsdelivr.net/npm/igv@2.15.5/dist/). 
+
 
 To import igv as an ES6 module
 
