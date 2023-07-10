@@ -1,4 +1,4 @@
-import { DOMUtils, UIUtils } from '../../node_modules/igv-utils/src/index.js'
+import { DOMUtils, UIUtils } from '../../node_modules/igv-ui/dist/igv-ui.js'
 
 class ROIMenu {
     constructor(browser, parent) {

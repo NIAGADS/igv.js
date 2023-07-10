@@ -1,105 +1,17 @@
-import { StringUtils, DOMUtils, Icon, makeDraggable } from '../../node_modules/igv-utils/src/index.js'
+import { DOMUtils } from '../../node_modules/igv-ui/dist/igv-ui.js'
+import { StringUtils } from '../../node_modules/igv-utils/src/index.js'
+
 import { createRegionKey, parseRegionKey } from './ROIManager.js'
+import RegionTableBase from '../ui/regionTableBase.js'
 
-const tableRowSelectionList = []
+class ROITable extends RegionTableBase {
+    constructor(config) {
 
-class ROITable {
-
-    constructor(browser, parent, hasROISetNames) {
-
-        this.browser = browser
-
-        this.container = DOMUtils.div({ class: hasROISetNames ? 'igv-roi-table' : 'igv-roi-table-four-column' })
-        parent.appendChild(this.container)
-
-        this.hasROISetNames = hasROISetNames
-
-        const header = this.createHeaderDOM(this.container)
-
-        this.columnTitleDOM = createColumnTitleDOM(this.container, hasROISetNames)
-
-        this.tableRowContainerDOM = this.createTableRowContainerDOM(this.container)
-
-        this.footerDOM = this.createFooterDOM(this.container)
-
-        const { y:y_root } = browser.root.getBoundingClientRect()
-        const { y:y_parent } = parent.getBoundingClientRect()
-
-        const constraint = -(y_parent - y_root)
-
-        makeDraggable(this.container, header, { minX:0, minY:constraint })
-
-        this.container.style.display = 'none'
-
+        const cooked = Object.assign({ 'width':'512px' }, config)
+        super(cooked)
     }
 
-    clearTable() {
-        const elements = this.tableRowContainerDOM.querySelectorAll('.igv-roi-table-row')
-        for (let el of elements) {
-            el.remove()
-        }
-    }
-
-    present() {
-        this.container.style.left = `${ 0 }px`
-        this.container.style.top  = `${ 0 }px`
-        this.container.style.display = 'flex'
-    }
-
-    dismiss() {
-        this.container.style.display = 'none'
-    }
-
-    renderTable(records) {
-
-        Array.from(this.tableRowContainerDOM.querySelectorAll('.igv-roi-table-row')).forEach(el => el.remove())
-
-        if (records.length > 0) {
-
-            const sortedRecords = records.sort((a, b) => (a.feature.chr.localeCompare(b.feature.chr) || a.feature.start - b.feature.start || a.feature.end - b.feature.end))
-
-            for (let record of sortedRecords) {
-                const row = this.createTableRowDOM(record)
-                this.tableRowContainerDOM.appendChild(row)
-            }
-
-        }
-    }
-
-    createHeaderDOM(container) {
-
-        // header
-        const header = DOMUtils.div()
-        container.appendChild(header)
-
-        // title
-        const title = DOMUtils.div()
-        header.appendChild(title)
-        title.innerText = 'Regions of Interest'
-
-        // dismiss button
-        const dismiss = DOMUtils.div()
-        header.appendChild(dismiss)
-        dismiss.appendChild(Icon.createIcon('times'))
-
-        dismiss.addEventListener('click', event => {
-            event.stopPropagation()
-            this.browser.roiTableControl.buttonHandler(false)
-        })
-
-        return header
-
-    }
-
-    createTableRowContainerDOM(container) {
-
-        const dom = DOMUtils.div({ class: 'igv-roi-table-row-container' })
-        container.appendChild(dom)
-
-        return dom
-    }
-
-    createTableRowDOM(record) {
+    tableRowDOM(record) {
 
         const dom = DOMUtils.div({ class: 'igv-roi-table-row' })
 
@@ -115,121 +27,90 @@ class ROITable {
                 setName
             ];
 
-        if (false === this.hasROISetNames) {
+        if (4 === this.columnFormat.length) {
             strings = strings.slice(0, 4)
         }
 
-        for (let string of strings) {
+        for (let i = 0; i < strings.length; i++) {
             const el = DOMUtils.div()
-            el.innerText = string
             dom.appendChild(el)
+            el.style.width = this.columnFormat[ i ].width
+            el.innerText = strings[ i ]
         }
 
-        dom.addEventListener('mousedown', event => {
-            event.stopPropagation()
-
-            dom.classList.toggle('igv-roi-table-row-selected')
-            dom.classList.contains('igv-roi-table-row-selected') ? dom.classList.remove('igv-roi-table-row-hover') : dom.classList.add('igv-roi-table-row-hover')
-
-            this.setButtonState(dom.classList.contains('igv-roi-table-row-selected'))
-        })
-
-        dom.addEventListener('mouseover', e => {
-            dom.classList.contains('igv-roi-table-row-selected') ? dom.classList.remove('igv-roi-table-row-hover') : dom.classList.add('igv-roi-table-row-hover')
-        })
-
-        dom.addEventListener('mouseout', e => {
-            dom.classList.remove('igv-roi-table-row-hover')
-        })
+        this.tableRowDOMHelper(dom)
 
         return dom
     }
 
-    createFooterDOM(container) {
+    renderTable(records) {
 
-        const dom = DOMUtils.div()
-        container.appendChild(dom)
+        Array.from(this.tableRowContainer.querySelectorAll('.igv-roi-table-row')).forEach(el => el.remove())
 
-        // Go To Button
-        const gotoButton = DOMUtils.div({class: 'igv-roi-table-button'})
-        dom.appendChild(gotoButton)
+        if (records.length > 0) {
 
-        gotoButton.id = 'igv-roi-table-view-button'
-        gotoButton.textContent = 'Go To'
-        gotoButton.style.pointerEvents = 'none'
+            const sortedRecords = records.sort((a, b) => (a.feature.chr.localeCompare(b.feature.chr) || a.feature.start - b.feature.start || a.feature.end - b.feature.end))
 
-        gotoButton.addEventListener('click', event => {
-
-            event.stopPropagation()
-
-            const selected = container.querySelectorAll('.igv-roi-table-row-selected')
-            const loci = []
-            for (let el of selected) {
-                const { locus } = parseRegionKey(el.dataset.region)
-                loci.push(locus)
+            for (let record of sortedRecords) {
+                const row = this.tableRowDOM(record)
+                this.tableRowContainer.appendChild(row)
             }
 
-            for (let el of container.querySelectorAll('.igv-roi-table-row')) {
-                el.classList.remove('igv-roi-table-row-selected')
-            }
-
-            this.setButtonState(false)
-
-            if (loci.length > 0) {
-                this.browser.search(loci.join(' '))
-            }
-
-        })
-
-        return dom
-    }
-
-
-    setButtonState(isTableRowSelected) {
-        isTableRowSelected ? tableRowSelectionList.push(1) : tableRowSelectionList.pop()
-        const gotoButton = this.footerDOM.querySelector('#igv-roi-table-view-button')
-        gotoButton.style.pointerEvents = tableRowSelectionList.length > 0 ? 'auto' : 'none'
+        }
     }
 
     dispose() {
 
+        document.removeEventListener('click', this.boundGotoButtonHandler)
+
         this.browser.roiTableControl.buttonHandler(false)
+        super.dispose()
+    }
 
-        this.container.innerHTML = ''
+    static getColumnFormatConfiguration(doIncludeROISetNames) {
 
-        for (let key of Object.keys(this)) {
-            this[key] = undefined
+        if (true === doIncludeROISetNames) {
+
+            return [
+                    { label: 'Chr', width: '20%' },
+                    { label: 'Start', width: '15%' },
+                    { label: 'End', width: '15%' },
+                    { label: 'Description', width: '30%' },
+                    { label: 'ROI Set', width: '20%' }
+                ]
+        } else {
+            return [
+                    { label: 'Chr', width: '25%' },
+                    { label: 'Start', width: '20%' },
+                    { label: 'End', width: '20%' },
+                    { label: 'Description', width: '35%' }
+                ]
         }
+
+    }
+
+    static gotoButtonHandler (event) {
+
+        event.stopPropagation()
+
+        const selected = this.tableDOM.querySelectorAll('.igv-roi-table-row-selected')
+        const loci = []
+        for (let el of selected) {
+            const { locus } = parseRegionKey(el.dataset.region)
+            loci.push(locus)
+        }
+
+        for (let el of this.tableDOM.querySelectorAll('.igv-roi-table-row')) {
+            el.classList.remove('igv-roi-table-row-selected')
+        }
+
+        this.setTableRowSelectionState(false)
+
+        if (loci.length > 0) {
+            this.browser.search(loci.join(' '))
+        }
+
     }
 
 }
-
-function createColumnTitleDOM(container, hasROISetNames) {
-
-    const dom = DOMUtils.div({ class: 'igv-roi-table-column-titles' })
-    container.appendChild(dom)
-
-    let columnTitles =
-        [
-            'Chr',
-            'Start',
-            'End',
-            'Description',
-            'ROI Set',
-        ]
-
-
-    if (false === hasROISetNames) {
-        columnTitles = columnTitles.slice(0, 4)
-    }
-
-    for (let title of columnTitles) {
-        const col = DOMUtils.div()
-        col.innerText = title
-        dom.appendChild(col)
-    }
-
-    return dom
-}
-
 export default ROITable

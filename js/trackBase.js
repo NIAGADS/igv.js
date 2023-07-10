@@ -26,6 +26,8 @@
 import {isSimpleType} from "./util/igvUtils.js"
 import {FeatureUtils, FileUtils, StringUtils} from "../node_modules/igv-utils/src/index.js"
 
+const DEFAULT_COLOR = 'rgb(150,150,150)'
+
 const fixColor = (colorString) => {
     if (StringUtils.isString(colorString)) {
         return (colorString.indexOf(",") > 0 && !(colorString.startsWith("rgb(") || colorString.startsWith("rgba("))) ?
@@ -44,6 +46,15 @@ const fixColor = (colorString) => {
  */
 class TrackBase {
 
+    static defaults = {
+        height: 50,
+        autoHeight: false,
+        visibilityWindow: undefined,   // Identifies property that should be copied from config
+        color: undefined,  // Identifies property that should be copied from config
+        altColor: undefined,  // Identifies property that should be copied from config
+        supportHiDPI: true
+    }
+
     constructor(config, browser) {
         this.browser = browser
         this.init(config)
@@ -57,15 +68,25 @@ class TrackBase {
      */
     init(config) {
 
+        this.config = config
+
         if (config.displayMode) {
             config.displayMode = config.displayMode.toUpperCase()
         }
 
-        this.config = config
-        this.url = config.url
-        this.type = config.type
-
-        this.supportHiDPI = config.supportHiDPI === undefined ? true : config.supportHiDPI
+        // Set default properties
+        const defaults = Object.assign({}, TrackBase.defaults)
+        if(this.constructor.defaults) {
+            for(let key of Object.keys(this.constructor.defaults)) {
+                defaults[key] = this.constructor.defaults[key]
+            }
+        }
+        for(let key of Object.keys(defaults)) {
+            this[key] = config.hasOwnProperty(key) ? config[key] : defaults[key]
+            if(key === 'color' || key === 'altColor') {
+                this[key] = fixColor(this[key])
+            }
+        }
 
         if (config.name || config.label) {
             this.name = config.name || config.label
@@ -75,28 +96,14 @@ class TrackBase {
             this.name = FileUtils.getFilename(config.url)
         }
 
+        this.url = config.url
+        if(this.config.type) this.type = this.config.type
         this.id = this.config.id === undefined ? this.name : this.config.id
-
         this.order = config.order
-
-        if (config.color) this.color = fixColor(config.color)
-        if (config.altColor) this.altColor = fixColor(config.altColor)
-        if ("civic-ws" === config.sourceType) {    // Ugly proxy for specialized track type
-            this.defaultColor = "rgb(155,20,20)"
-        } else {
-            this.defaultColor = "rgb(0,0,150)"
-        }
-
         this.autoscaleGroup = config.autoscaleGroup
-
         this.removable = config.removable === undefined ? true : config.removable      // Defaults to true
-
-        this.height = config.height || 100
-        this.autoHeight = config.autoHeight
         this.minHeight = config.minHeight || Math.min(25, this.height)
         this.maxHeight = config.maxHeight || Math.max(1000, this.height)
-
-        this.visibilityWindow = config.visibilityWindow
 
         if (config.onclick) {
             this.onclick = config.onclick
@@ -154,17 +161,18 @@ class TrackBase {
     }
 
     /**
-     * Default implementation -- update config with current values.
-     * to create session object for bookmarking, sharing.  Updates the track "config" object to reflect the
-     * current state.  Only simple properties (string, number, boolean) are updated.
+     * Used to create session object for bookmarking, sharing.  Only simple property values (string, number, boolean)
+     * are saved.
      */
     getState() {
+
+        const jsonable = (v) => !(v === undefined || typeof v === 'function' || v instanceof File || v instanceof Promise)
 
         // Create copy of config, minus transient properties (convention is name starts with '_').  Also, all
         // function properties are transient as they cannot be saved in json
         const state = {}
         for (let key of Object.keys(this.config)) {
-            if (!key.startsWith("_") && typeof this.config[key] !== "function" && this.config[key] !== undefined) {
+            if (!key.startsWith("_") && jsonable(this.config[key])) {
                 state[key] = this.config[key]
             }
         }
@@ -178,29 +186,23 @@ class TrackBase {
             }
         }
 
-        if (this.color) state.color = this.color
-        if (this.altColor) state.altColor = this.altColor
+        // If user has changed other properties from defaults update state.
+        const defs = TrackBase.defaults
+        if (this.constructor.defaults) {
+            for (let key of Object.keys(this.constructor.defaults)) {
+                defs[key] = this.constructor.defaults[key]
+            }
+        }
+        for (let key of Object.keys(defs)) {
+            if (undefined !== this[key] && defs[key] !== this[key]) {
+                state[key] = this[key]
+            }
+        }
 
         // Flatten dataRange if present
         if (!this.autoscale && this.dataRange) {
             state.min = this.dataRange.min
             state.max = this.dataRange.max
-        }
-
-
-        // Check for non-json-if-yable properties.  Perhaps we should test what can be saved.
-        for (let key of Object.keys(state)) {
-            const value = state[key]
-            if (typeof value === 'function') {
-                throw Error(`Property '${key}' of track '${this.name} is a function. Functions cannot be saved in sessions.`)
-            }
-            if (value instanceof File) {   // Test specifically for File.  Other types of File-like objects might be savable
-                const str = `Track ${this.name} is a local file. Sessions cannot be saved with local file references.`
-                throw Error(str)
-            }
-            if (value instanceof Promise) {
-                throw Error(`Property '${key}' of track '${this.name} is a Promise. Promises cannot be saved in sessions.`)
-            }
         }
 
         return state
@@ -289,6 +291,8 @@ class TrackBase {
                         }
                         tracklineConfg.autoscale = false
                         tracklineConfg.dataRange = {min, max}
+                        this.viewLimitMin = min
+                        this.viewLimitMax = max
                     }
                 case "name":
                     tracklineConfg[key] = properties[key]
@@ -488,6 +492,15 @@ class TrackBase {
         }
         str += '</div>'
         return str
+    }
+
+    /**
+     * Return color for a specific feature of this track.  This default implementation is overriden by subclasses*
+     * @param f
+     * @returns {*|string|string}
+     */
+    getColorForFeature(f) {
+        return (typeof this.color === "function") ? this.color(feature) : this.color
     }
 
     /**

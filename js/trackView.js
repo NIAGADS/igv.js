@@ -27,11 +27,14 @@
 import $ from "./vendor/jquery-3.3.1.slim.js"
 import {doAutoscale} from "./util/igvUtils.js"
 import {createViewport} from "./util/viewportUtils.js"
-import {DOMUtils, FeatureUtils, Icon, IGVColor, StringUtils} from '../node_modules/igv-utils/src/index.js'
-import SampleNameViewport from './sampleNameViewport.js'
+import {FeatureUtils, IGVColor, StringUtils} from '../node_modules/igv-utils/src/index.js'
+import {DOMUtils, Icon} from '../node_modules/igv-ui/dist/igv-ui.js'
+import SampleInfoViewport from "./sample/sampleInfoViewport.js";
+import SampleNameViewport from './sample/sampleNameViewport.js'
 import MenuPopup from "./ui/menuPopup.js"
 import MenuUtils from "./ui/menuUtils.js"
 
+const igv_axis_column_width = 50
 const scrollbarExclusionTypes = new Set(['ruler', 'ideogram'])
 const colorPickerExclusionTypes = new Set(['ruler', 'sequence', 'ideogram'])
 
@@ -74,8 +77,11 @@ class TrackView {
             this.viewports.push(viewport)
         }
 
+        // Sample Info
+        this.sampleInfoViewport = new SampleInfoViewport(this, browser.columnContainer.querySelector('.igv-sample-info-column'), browser.getSampleInfoViewportWidth())
+
         // SampleName Viewport
-        this.sampleNameViewport = new SampleNameViewport(this, browser.columnContainer.querySelector('.igv-sample-name-column'), undefined, browser.sampleNameViewportWidth)
+        this.sampleNameViewport = new SampleNameViewport(this, browser.columnContainer.querySelector('.igv-sample-name-column'), undefined, browser.getSampleNameViewportWidth())
 
         // Track Scrollbar
         this.createTrackScrollbar(browser)
@@ -128,36 +134,6 @@ class TrackView {
         }
     }
 
-    removeDOMFromColumnContainer() {
-
-        // Axis
-        if (this.boundAxisClickHander) {
-            this.removeAxisEventListener(this.axis)
-        }
-        this.axis.remove()
-
-        // Track Viewports
-        for (let viewport of this.viewports) {
-            viewport.$viewport.remove()
-        }
-
-        // SampleName Viewport
-        this.sampleNameViewport.dispose()
-
-        // empty trackScrollbar Column
-        this.removeTrackScrollMouseHandlers()
-        this.outerScroll.remove()
-
-        // empty trackDrag Column
-        this.removeTrackDragMouseHandlers()
-        this.dragHandle.remove()
-
-        // empty trackGear Column
-        this.removeTrackGearMouseHandlers()
-        this.gearContainer.remove()
-
-    }
-
     renderSVGContext(context, {deltaX, deltaY}) {
 
         renderSVGAxis(context, this.track, this.axisCanvas, deltaX, deltaY)
@@ -175,6 +151,12 @@ class TrackView {
         for (let viewport of this.viewports) {
             viewport.renderSVGContext(context, delta)
             const {width} = viewport.$viewport.get(0).getBoundingClientRect()
+            delta.deltaX += width
+        }
+
+        if (true === this.browser.sampleInfo.isInitialized() && true === this.browser.sampleInfoControl.showSampleInfo) {
+            this.sampleInfoViewport.renderSVGContext(context, delta)
+            const {width} = this.sampleInfoViewport.viewport.getBoundingClientRect()
             delta.deltaX += width
         }
 
@@ -253,6 +235,8 @@ class TrackView {
             $viewport.height(newHeight)
         }
 
+        this.sampleInfoViewport.viewport.style.height = `${newHeight}px`
+
         this.sampleNameViewport.viewport.style.height = `${newHeight}px`
 
         // If the track does not manage its own content height set it equal to the viewport height here
@@ -278,7 +262,7 @@ class TrackView {
         const viewportHeight = this.viewports[0].$viewport.height()
         this.outerScroll.style.height = `${viewportHeight}px`
 
-        const viewportContentHeight = maxViewportContentHeight(this.viewports)
+        const viewportContentHeight = this.maxViewportContentHeight()
         const innerScrollHeight = Math.round((viewportHeight / viewportContentHeight) * viewportHeight)
 
         if (viewportContentHeight > viewportHeight) {
@@ -295,12 +279,14 @@ class TrackView {
         const top = Math.min(Math.max(0, y), this.outerScroll.clientHeight - this.innerScroll.clientHeight)
         $(this.innerScroll).css('top', `${top}px`)
 
-        const contentHeight = maxViewportContentHeight(this.viewports)
+        const contentHeight = this.maxViewportContentHeight()
         const contentTop = -Math.round(top * (contentHeight / this.viewports[0].$viewport.height()))
 
         for (let viewport of this.viewports) {
             viewport.setTop(contentTop)
         }
+
+        this.sampleInfoViewport.setTop(contentTop)
 
         this.sampleNameViewport.trackScrollDelta = delta
         this.sampleNameViewport.setTop(contentTop)
@@ -329,8 +315,16 @@ class TrackView {
             this.paintAxis()
         }
 
-        // Repaint sample names last
+        this.repaintSampleInfo()
+
         this.repaintSamples()
+    }
+
+    repaintSampleInfo() {
+        if (typeof this.track.getSamples === 'function') {
+            const samples = this.track.getSamples()
+            this.sampleInfoViewport.repaint(samples)
+        }
     }
 
     repaintSamples() {
@@ -448,7 +442,8 @@ class TrackView {
 
         this.adjustTrackHeight()
 
-        // Repaint sample names last
+        this.repaintSampleInfo()
+
         this.repaintSamples()
 
         this.updateRulerViewportLabels()
@@ -518,29 +513,28 @@ class TrackView {
         for (let viewport of this.viewports) {
             viewport.checkContentHeight()
         }
-
         this.adjustTrackHeight()
+
     }
 
     adjustTrackHeight() {
 
-        var maxHeight = maxViewportContentHeight(this.viewports)
+        var contentHeight = this.maxViewportContentHeight()
         if (this.track.autoHeight) {
-            this.setTrackHeight(maxHeight, false)
+            this.setTrackHeight(contentHeight, false)
         } else if (this.track.paintAxis) {   // Avoid duplication, paintAxis is already called in setTrackHeight
             this.paintAxis()
         }
 
         if (false === scrollbarExclusionTypes.has(this.track.type)) {
 
+            // Adjust scrollbar, if needed, to insure content is in view
             const currentTop = this.viewports[0].getContentTop()
-
-            const heights = this.viewports.map(viewport => viewport.getContentHeight())
-            const minContentHeight = Math.min(...heights)
-            const newTop = Math.min(0, this.viewports[0].$viewport.height() - minContentHeight)
-            if (currentTop < newTop) {
-                for (let viewport of this.viewports) {
-                    viewport.$content.css('top', `${newTop}px`)
+            const viewportHeight = this.viewports[0].$viewport.height()
+            const minTop = Math.min(0, viewportHeight - contentHeight)
+            if(currentTop < minTop) {
+                 for (let viewport of this.viewports) {
+                    viewport.setTop(minTop)
                 }
             }
             this.updateScrollbar()
@@ -688,8 +682,6 @@ class TrackView {
 
             function documentTrackDragMouseUpHandler(event) {
 
-                // console.log(`${ Date.now() } TrackView - documentTrackDragMouseUpHandler - target ${ event.target.nodeName }`)
-
                 browser.endTrackDrag()
 
                 if (currentDragHandle && event.target !== currentDragHandle) {
@@ -778,6 +770,39 @@ class TrackView {
 
     }
 
+    removeDOMFromColumnContainer() {
+
+        // Axis
+        if (this.boundAxisClickHander) {
+            this.removeAxisEventListener(this.axis)
+        }
+        this.axis.remove()
+
+        // Track Viewports
+        for (let viewport of this.viewports) {
+            viewport.$viewport.remove()
+        }
+
+        // Sample Info Viewport
+        this.sampleInfoViewport.dispose()
+
+        // SampleName Viewport
+        this.sampleNameViewport.dispose()
+
+        // empty trackScrollbar Column
+        this.removeTrackScrollMouseHandlers()
+        this.outerScroll.remove()
+
+        // empty trackDrag Column
+        this.removeTrackDragMouseHandlers()
+        this.dragHandle.remove()
+
+        // empty trackGear Column
+        this.removeTrackGearMouseHandlers()
+        this.gearContainer.remove()
+
+    }
+
     /**
      * Do any cleanup here
      */
@@ -789,6 +814,8 @@ class TrackView {
         for (let viewport of this.viewports) {
             viewport.dispose()
         }
+
+        this.sampleInfoViewport.dispose()
 
         this.sampleNameViewport.dispose()
 
@@ -835,6 +862,10 @@ class TrackView {
         }
     }
 
+    maxViewportContentHeight() {
+        return Math.max(this.viewports.map(viewport => viewport.getContentHeight()))
+    }
+
 }
 
 function renderSVGAxis(context, track, axisCanvas, deltaX, deltaY) {
@@ -856,13 +887,5 @@ function renderSVGAxis(context, track, axisCanvas, deltaX, deltaY) {
 }
 
 
-// css - $igv-axis-column-width: 50px;
-const igv_axis_column_width = 50
-
-function maxViewportContentHeight(viewports) {
-    const heights = viewports.map(viewport => viewport.getContentHeight())
-    return Math.max(...heights)
-}
-
-export {igv_axis_column_width, maxViewportContentHeight}
+export {igv_axis_column_width}
 export default TrackView

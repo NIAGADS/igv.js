@@ -25,4 +25,8 @@ igv.css.map
 /config_demo.json
 /dev/oauth/oauthConfigPrivate.js
 /encode/
-/js/version.js
+/test/testShoebox.js
+/deployShoebox.sh
+/examples/shoebox.html
+/dev/shoebox/*
+

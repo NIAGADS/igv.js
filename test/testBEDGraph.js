@@ -1,7 +1,9 @@
 import "./utils/mockObjects.js"
-import FeatureSource from "../js/feature/featureSource.js";
-import {assert} from 'chai';
-import {genome} from "./utils/Genome.js";
+import FeatureSource from "../js/feature/featureSource.js"
+import {assert} from 'chai'
+import {createGenome} from "./utils/Genome.js"
+
+const genome = createGenome()
 
 suite("testBedGraph", function () {
 
@@ -13,20 +15,22 @@ suite("testBedGraph", function () {
             end = 49304701,
             featureSource = FeatureSource({
                     format: 'bedgraph',
-                    url: require.resolve('./data/wig/bedgraph-example-uscs.bedgraph')
+                    url: 'test/data/wig/bedgraph-example-uscs.bedgraph'
                 },
-                genome);
+                genome
+            )
 
-        const features = await featureSource.getFeatures({chr, start, end});
-        assert.ok(features);
-        assert.equal(features.length, 9);
+
+        const features = await featureSource.getFeatures({chr, start, end})
+        assert.ok(features)
+        assert.equal(features.length, 9)
 
         //chr19	49302600	49302900	-0.50
-        var f = features[2];
-        assert.equal(f.chr, "chr19", "chromosome");
-        assert.equal(f.start, 49302600, "start");
-        assert.equal(f.end, 49302900, "end");
-        assert.equal(f.value, -0.50, "value");
+        var f = features[2]
+        assert.equal(f.chr, "chr19", "chromosome")
+        assert.equal(f.start, 49302600, "start")
+        assert.equal(f.end, 49302900, "end")
+        assert.equal(f.value, -0.50, "value")
     })
 })
 

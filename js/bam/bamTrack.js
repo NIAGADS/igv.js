@@ -36,46 +36,51 @@ import {IGVColor, StringUtils} from "../../node_modules/igv-utils/src/index.js"
 import {makePairedAlignmentChords, makeSupplementalAlignmentChords, sendChords} from "../jbrowse/circularViewUtils.js"
 import {isSecureContext} from "../util/igvUtils.js"
 import PairedEndStats from "./pairedEndStats.js"
+import {createBlatTrack, maxSequenceSize} from "../blat/blatTrack.js"
+import {reverseComplementSequence} from "../util/sequenceUtils.js"
 
 const alignmentStartGap = 5
 const downsampleRowHeight = 5
-const DEFAULT_COVERAGE_TRACK_HEIGHT = 50
-const DEFAULT_TRACK_HEIGHT = 300
 const DEFAULT_ALIGNMENT_COLOR = "rgb(185, 185, 185)"
 const DEFAULT_COVERAGE_COLOR = "rgb(150, 150, 150)"
 const DEFAULT_CONNECTOR_COLOR = "rgb(200, 200, 200)"
+const MINIMUM_BLAT_LENGTH = 20
 
 class BAMTrack extends TrackBase {
+
+    static defaults = {
+        alleleFreqThreshold: 0.2,
+        visibilityWindow: 30000,
+        showCoverage: true,
+        showAlignments: true,
+        viewAsPairs: false,
+        pairsSupported: true,
+        showSoftClips: false,
+        showAllBases: false,
+        showInsertions: true,
+        showMismatches: true,
+        height: 300,
+        coverageTrackHeight: 50
+    }
 
     constructor(config, browser) {
         super(config, browser)
     }
 
     init(config) {
-        super.init(config)
+
         this.type = "alignment"
-
-        if (config.alleleFreqThreshold === undefined) {
-            config.alleleFreqThreshold = 0.2
-        }
-
         this.featureSource = new BamSource(config, this.browser)
-
-        this.showCoverage = config.showCoverage === undefined ? true : config.showCoverage
-        this.showAlignments = config.showAlignments === undefined ? true : config.showAlignments
-
         this.coverageTrack = new CoverageTrack(config, this)
         this.alignmentTrack = new AlignmentTrack(config, this)
+
+        super.init(config)
+
         this.alignmentTrack.setTop(this.coverageTrack, this.showCoverage)
-        this.visibilityWindow = config.visibilityWindow || 30000
-        this.viewAsPairs = config.viewAsPairs
-        this.pairsSupported = config.pairsSupported !== false
-        this.showSoftClips = config.showSoftClips
-        this.showAllBases = config.showAllBases
-        this.showInsertions = false !== config.showInsertions
-        this.showMismatches = false !== config.showMismatches
-        this.color = config.color
-        this.coverageColor = config.coverageColor
+
+        if(!this.showAlignments) {
+            this._height = this.coverageTrackHeight
+        }
 
         // The sort object can be an array in the case of multi-locus view, however if multiple sort positions
         // are present for a given reference frame the last one will take precedence
@@ -88,14 +93,12 @@ class BAMTrack extends TrackBase {
             }
         }
 
-        // Invoke height setter last to allocated to coverage and alignment tracks
-        this.height = (config.height !== undefined ? config.height : DEFAULT_TRACK_HEIGHT)
     }
 
     set height(h) {
         this._height = h
-        if (this.coverageTrack && this.showAlignments) {
-            this.alignmentTrack.height = this.showCoverage ? h - this.coverageTrack.height : h
+        if (this.showAlignments) {
+            this.alignmentTrack.height = this.showCoverage ? h - this.coverageTrackHeight : h
         }
     }
 
@@ -182,16 +185,15 @@ class BAMTrack extends TrackBase {
      * @returns {number}
      */
     computePixelHeight(alignmentContainer) {
-        return (this.showCoverage ? this.coverageTrack.height : 0) +
-            (this.showAlignments ? this.alignmentTrack.computePixelHeight(alignmentContainer) : 0) +
-            15
+        return (this.showCoverage ? this.coverageTrackHeight : 0) +
+            (this.showAlignments ? this.alignmentTrack.computePixelHeight(alignmentContainer) : 0)
     }
 
     draw(options) {
 
         IGVGraphics.fillRect(options.context, 0, options.pixelTop, options.pixelWidth, options.pixelHeight, {'fillStyle': "rgb(255, 255, 255)"})
 
-        if (true === this.showCoverage && this.coverageTrack.height > 0) {
+        if (true === this.showCoverage && this.coverageTrackHeight > 0) {
             this.trackView.axisCanvas.style.display = 'block'
             this.coverageTrack.draw(options)
         } else {
@@ -206,12 +208,12 @@ class BAMTrack extends TrackBase {
 
     paintAxis(ctx, pixelWidth, pixelHeight) {
 
-        this.coverageTrack.paintAxis(ctx, pixelWidth, this.coverageTrack.height)
+        this.coverageTrack.paintAxis(ctx, pixelWidth, this.coverageTrackHeight)
 
         // if (this.browser.isMultiLocusMode()) {
         //     ctx.clearRect(0, 0, pixelWidth, pixelHeight);
         // } else {
-        //     this.coverageTrack.paintAxis(ctx, pixelWidth, this.coverageTrack.height);
+        //     this.coverageTrack.paintAxis(ctx, pixelWidth, this.coverageTrackHeight);
         // }
     }
 
@@ -220,7 +222,7 @@ class BAMTrack extends TrackBase {
     }
 
     popupData(clickState) {
-        if (true === this.showCoverage && clickState.y >= this.coverageTrack.top && clickState.y < this.coverageTrack.height) {
+        if (true === this.showCoverage && clickState.y >= this.coverageTrack.top && clickState.y < this.coverageTrackHeight) {
             return this.coverageTrack.popupData(clickState)
         } else {
             return this.alignmentTrack.popupData(clickState)
@@ -235,7 +237,7 @@ class BAMTrack extends TrackBase {
     clickedFeatures(clickState) {
 
         let clickedObject
-        if (true === this.showCoverage && clickState.y >= this.coverageTrack.top && clickState.y < this.coverageTrack.height) {
+        if (true === this.showCoverage && clickState.y >= this.coverageTrack.top && clickState.y < this.coverageTrackHeight) {
             clickedObject = this.coverageTrack.getClickedObject(clickState)
         } else {
             clickedObject = this.alignmentTrack.getClickedObject(clickState)
@@ -244,9 +246,9 @@ class BAMTrack extends TrackBase {
     }
 
     hoverText(clickState) {
-        if (true === this.showCoverage && clickState.y >= this.coverageTrack.top && clickState.y < this.coverageTrack.height) {
+        if (true === this.showCoverage && clickState.y >= this.coverageTrack.top && clickState.y < this.coverageTrackHeight) {
             const clickedObject = this.coverageTrack.getClickedObject(clickState)
-            if(clickedObject) {
+            if (clickedObject) {
                 return clickedObject.hoverText()
             }
         }
@@ -284,8 +286,8 @@ class BAMTrack extends TrackBase {
         // Show coverage / alignment options
         const adjustTrackHeight = () => {
             if (!this.autoHeight) {
-                const h = 15 +
-                    (this.showCoverage ? this.coverageTrack.height : 0) +
+                const h =
+                    (this.showCoverage ? this.coverageTrackHeight : 0) +
                     (this.showAlignments ? this.alignmentTrack.height : 0)
                 this.trackView.setTrackHeight(h)
             }
@@ -556,15 +558,6 @@ class BAMTrack extends TrackBase {
         }
         const chords = makePairedAlignmentChords(inView)
         sendChords(chords, this, refFrame, 0.02)
-
-        // const chordSetColor = IGVColor.addAlpha("all" === refFrame.chr ? this.color : getChrColor(refFrame.chr), 0.02)
-        // const trackColor = IGVColor.addAlpha(this.color || 'rgb(0,0,255)', 0.02)
-        //
-        // // name the chord set to include track name and locus
-        // const encodedName = this.name.replaceAll(' ', '%20')
-        // const chordSetName = "all" === refFrame.chr ? encodedName :
-        //     `${encodedName} (${refFrame.chr}:${refFrame.start}-${refFrame.end}`
-        // this.browser.circularView.addChords(chords, {name: chordSetName, color: chordSetColor, trackColor: trackColor})
     }
 
     addSplitChordsForViewport(viewport) {
@@ -581,15 +574,6 @@ class BAMTrack extends TrackBase {
 
         const chords = makeSupplementalAlignmentChords(inView)
         sendChords(chords, this, refFrame, 0.02)
-
-        // const chordSetColor = IGVColor.addAlpha("all" === refFrame.chr ? this.color : getChrColor(refFrame.chr), 0.02)
-        // const trackColor = IGVColor.addAlpha(this.color || 'rgb(0,0,255)', 0.02)
-        //
-        // // name the chord set to include track name and locus
-        // const encodedName = this.name.replaceAll(' ', '%20')
-        // const chordSetName = "all" === refFrame.chr ? encodedName :
-        //     `${encodedName} (${refFrame.chr}:${refFrame.start}-${refFrame.end}`
-        // this.browser.circularView.addChords(chords, {name: chordSetName, color: chordSetColor, trackColor: trackColor})
     }
 }
 
@@ -599,7 +583,6 @@ class CoverageTrack {
     constructor(config, parent) {
         this.parent = parent
         this.featureSource = parent.featureSource
-        this.height = config.coverageTrackHeight !== undefined ? config.coverageTrackHeight : DEFAULT_COVERAGE_TRACK_HEIGHT
 
         this.paintAxis = paintAxis
         this.top = 0
@@ -612,6 +595,10 @@ class CoverageTrack {
             }
         }
 
+    }
+
+    get height() {
+        return this.parent.coverageTrackHeight
     }
 
     draw(options) {
@@ -643,7 +630,7 @@ class CoverageTrack {
         let color
         if (this.parent.coverageColor) {
             color = this.parent.coverageColor
-        } else if (this.parent.color !== undefined && typeof this.parent.color !== "function") {
+        } else if (this.parent.color  && typeof this.parent.color !== "function") {
             color = IGVColor.darkenLighten(this.parent.color, -35)
         } else {
             color = DEFAULT_COVERAGE_COLOR
@@ -1253,7 +1240,8 @@ class AlignmentTrack {
                 chr: viewport.referenceFrame.chr,
                 position: Math.floor(clickState.genomicLocation),
                 option: option,
-                direction: direction
+                direction: direction,
+                sortAsPairs: viewport.trackView.track.viewAsPairs
             }
             this.parent.sortObject = newSortObject
             viewport.cachedFeatures.sortRows(newSortObject)
@@ -1262,6 +1250,7 @@ class AlignmentTrack {
         list.push('<b>Sort by...</b>')
         list.push({label: '&nbsp; base', click: () => sortByOption("BASE")})
         list.push({label: '&nbsp; read strand', click: () => sortByOption("STRAND")})
+        list.push({label: '&nbsp; start location', click: () => sortByOption("START")})
         list.push({label: '&nbsp; insert size', click: () => sortByOption("INSERT_SIZE")})
         list.push({label: '&nbsp; gap size', click: () => sortByOption("GAP_SIZE")})
         list.push({label: '&nbsp; chromosome of mate', click: () => sortByOption("MATE_CHR")})
@@ -1357,6 +1346,49 @@ class AlignmentTrack {
                     })
                 }
 
+                // TODO if genome supports blat
+                const seqstring = clickedAlignment.seq
+                if (seqstring && "*" != seqstring) {
+
+                    if (seqstring.length < maxSequenceSize) {
+                        list.push({
+                            label: 'BLAT read sequence',
+                            click: () => {
+                                const sequence = clickedAlignment.isNegativeStrand() ? reverseComplementSequence(seqstring) : seqstring
+                                const name = `${clickedAlignment.readName} - blat`
+                                const title = `${this.parent.name} - ${name}`
+                                createBlatTrack({sequence, browser: this.browser, name, title})
+                            }
+                        })
+                    }
+
+                    const softClips = clickedAlignment.softClippedBlocks()
+                    if (softClips.left && softClips.left.len > MINIMUM_BLAT_LENGTH && softClips.left.len < maxSequenceSize) {
+                        list.push({
+                            label: 'BLAT left soft-clipped sequence',
+                            click: () => {
+                                const clippedSequence = seqstring.substr(softClips.left.seqOffset, softClips.left.len)
+                                const sequence = clickedAlignment.isNegativeStrand() ? reverseComplementSequence(clippedSequence) : clippedSequence
+                                const name = `${clickedAlignment.readName} - blat left clip`
+                                const title = `${this.parent.name} - ${name}`
+                                createBlatTrack({sequence, browser: this.browser, name, title})
+                            }
+                        })
+                    }
+                    if (softClips.right && softClips.right.len > MINIMUM_BLAT_LENGTH && softClips.right.len < maxSequenceSize) {
+                        list.push({
+                            label: 'BLAT right soft-clipped sequence',
+                            click: () => {
+                                const clippedSequence = seqstring.substr(softClips.right.seqOffset, softClips.right.len)
+                                const sequence = clickedAlignment.isNegativeStrand() ? reverseComplementSequence(clippedSequence) : clippedSequence
+                                const name = `${clickedAlignment.readName} - blat right clip`
+                                const title = `${this.parent.name} - ${name}`
+                                createBlatTrack({sequence, browser: this.browser, name, title})
+                            }
+                        })
+                    }
+                }
+
                 list.push('<hr/>')
             }
         }
@@ -1441,8 +1473,9 @@ class AlignmentTrack {
             case "tag":
                 if (this.parent.color) {
                     return (typeof this.parent.color === "function") ? this.parent.color(alignment) : this.parent.color
+                } else {
+                    return DEFAULT_CONNECTOR_COLOR
                 }
-                return DEFAULT_CONNECTOR_COLOR
             default:
                 return this.getAlignmentColor(alignment)
 
@@ -1454,6 +1487,8 @@ class AlignmentTrack {
         let color = DEFAULT_ALIGNMENT_COLOR   // The default color if nothing else applies
         if (this.parent.color) {
             color = (typeof this.parent.color === "function") ? this.parent.color(alignment) : this.parent.color
+        } else {
+            color = DEFAULT_ALIGNMENT_COLOR
         }
         const option = this.colorBy
         switch (option) {

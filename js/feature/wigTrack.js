@@ -32,48 +32,58 @@ import paintAxis from "../util/paintAxis.js"
 import {IGVColor, StringUtils} from "../../node_modules/igv-utils/src/index.js"
 import MenuUtils from "../ui/menuUtils.js"
 
-const DEFAULT_COLOR = "rgb(150,150,150)"
+const DEFAULT_COLOR = 'rgb(150, 150, 150)'
 
 class WigTrack extends TrackBase {
+
+    static defaults = {
+        height: 50,
+        flipAxis: false,
+        logScale: false,
+        windowFunction: 'mean',
+        graphType: 'bar',
+        autoscale: true,
+        normalize: undefined,
+        scaleFactor: undefined
+    }
 
     constructor(config, browser) {
         super(config, browser)
     }
 
     init(config) {
+
         super.init(config)
 
         this.type = "wig"
-        this.height = config.height || 50
         this.featureType = 'numeric'
         this.paintAxis = paintAxis
 
         const format = config.format ? config.format.toLowerCase() : config.format
-        this.flipAxis = config.flipAxis ? config.flipAxis : false
-        this.logScale = config.logScale ? config.logScale : false
         if (config.featureSource) {
             this.featureSource = config.featureSource
             delete config.featureSource
         } else if ("bigwig" === format) {
             this.featureSource = new BWSource(config, this.browser.genome)
+            this.resolutionAware = true
         } else if ("tdf" === format) {
             this.featureSource = new TDFSource(config, this.browser.genome)
+            this.resolutionAware = true
         } else {
             this.featureSource = FeatureSource(config, this.browser.genome)
+            this.resolutionAware = false
         }
 
-        this.autoscale = config.autoscale || config.max === undefined
-        if (!this.autoscale) {
+
+        // Override autoscale default
+        if(config.max === undefined || config.autoscale === true) {
+            this.autoscale = true
+        } else {
             this.dataRange = {
                 min: config.min || 0,
                 max: config.max
             }
         }
-
-        this.windowFunction = config.windowFunction || "mean"
-        this.graphType = config.graphType || "bar"
-        this.normalize = config.normalize  // boolean, for use with "TDF" files
-        this.scaleFactor = config.scaleFactor  // optional scale factor, ignored if normalize === true;
     }
 
     async postInit() {
@@ -169,7 +179,7 @@ class WigTrack extends TrackBase {
         if (typeof posColor === "string" && posColor.startsWith("rgb(")) {
             baselineColor = IGVColor.addAlpha(posColor, 0.1)
         }
-
+        let lastNegValue = 1
         const scaleFactor = this.getScaleFactor(this.dataRange.min, this.dataRange.max, options.pixelHeight, this.logScale)
         const yScale = (yValue) => this.logScale
             ? this.computeYPixelValueInLogScale(yValue, scaleFactor)
@@ -185,7 +195,7 @@ class WigTrack extends TrackBase {
 
                 let lastPixelEnd = -1
                 let lastY
-                let lastValue = -1
+
                 const y0 = yScale(0)
                 for (let f of features) {
 
@@ -200,8 +210,7 @@ class WigTrack extends TrackBase {
                     const rectEnd = Math.ceil((f.end - bpStart) / bpPerPixel)
                     const width = Math.max(1, rectEnd - x)
 
-                    let c = (f.value < 0 && this.altColor) ? this.altColor : posColor
-                    const color = (typeof c === "function") ? c(f.value) : c
+                    const color = this.getColorForFeature(f)
 
                     if (this.graphType === "points") {
                         const pointSize = this.config.pointSize || 3
@@ -209,21 +218,21 @@ class WigTrack extends TrackBase {
                         IGVGraphics.fillCircle(ctx, px, y, pointSize / 2, {"fillStyle": color, "strokeStyle": color})
 
                     } else if (this.graphType === "line") {
-                        if(lastY != undefined) {
-                            IGVGraphics.strokeLine(ctx, lastPixelEnd, lastY, x, y, {"fillStyle": color, "strokeStyle": color})
+
+                        if (lastY != undefined) {
+                            IGVGraphics.strokeLine(ctx, lastPixelEnd, lastY, x, y, {
+                                "fillStyle": color,
+                                "strokeStyle": color
+                            })
                         }
                         IGVGraphics.strokeLine(ctx, x, y, x + width, y, {"fillStyle": color, "strokeStyle": color})
                     } else {
-                        let height = y - y0
-                        const pixelEnd = x + width
-                        if (pixelEnd > lastPixelEnd || (f.value >= 0 && f.value > lastValue) || (f.value < 0 && f.value < lastNegValue)) {
-                            IGVGraphics.fillRect(ctx, x, y0, width, height, {fillStyle: color})
-                        }
+                        const height = y - y0
+                        IGVGraphics.fillRect(ctx, x, y0, width, height, {fillStyle: color})
+
                     }
                     lastPixelEnd = x + width
-                    lastValue = f.value
-                    lastY = y;
-
+                    lastY = y
                 }
 
                 // If the track includes negative values draw a baseline
@@ -305,26 +314,23 @@ class WigTrack extends TrackBase {
     }
 
     /**
+     * Return color for feature.
+     * @param feature
+     * @returns {string}
+     */
+
+    getColorForFeature(f) {
+        let c = (f.value < 0 && this.altColor) ? this.altColor : this.color || DEFAULT_COLOR
+        return (typeof c === "function") ? c(f.value) : c
+    }
+
+    /**
      * Called when the track is removed.  Do any needed cleanup here
      */
     dispose() {
         this.trackView = undefined
     }
 
-    /**
-     * Return the current state of the track.  Used to create sessions and bookmarks.
-     *
-     * @returns {*|{}}
-     */
-    getState() {
-
-        const config = super.getState()
-
-        if (this.flipAxis !== undefined) config.flipAxis = this.flipAxis
-        if (this.logScale !== undefined) config.logScale = this.logScale
-
-        return config
-    }
 }
 
 

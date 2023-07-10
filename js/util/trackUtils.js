@@ -69,7 +69,9 @@ const knownFileExtensions = new Set([
     "hiccups",
     "fasta",
     "fa",
-    "fna"
+    "fna",
+    "pytor",
+    "hic"
 ])
 
 /**
@@ -172,17 +174,10 @@ function inferIndexPath(url, extension) {
 }
 
 
-function inferTrackType(config) {
+function inferTrackType(format) {
 
-    translateDeprecatedTypes(config)
-
-    if (config.type) {
-        return config.type
-    }
-
-    if (config.format) {
-        const format = config.format.toLowerCase()
-        switch (format) {
+    if (format) {
+        switch (format.toLowerCase()) {
             case "bw":
             case "bigwig":
             case "wig":
@@ -216,6 +211,8 @@ function inferTrackType(config) {
                 return "bedtype"
             case "fasta":
                 return "sequence"
+            case "pytor":
+                return "cnvpytor"
             default:
                 return "annotation"
         }
@@ -264,9 +261,9 @@ async function inferFileFormatFromHeader(config) {
 
     if (config.url) {
         const firstBytes = await igvxhr.loadString(config.url, buildOptions(config, {range: {start: 0, size: 1000}}))
-        if(firstBytes) {
+        if (firstBytes) {
             const columnNames = firstBytes.split('\n')[0].split('\t')
-            if(isHiccups(columnNames)) {
+            if (isHiccups(columnNames)) {
                 return "hiccups"
             }
         }
@@ -276,5 +273,18 @@ async function inferFileFormatFromHeader(config) {
 
 }
 
+function registerFileFormats(name, fields) {
+    FileFormats[name] = {fields: fields}
+}
 
-export {knownFileExtensions, getFormat, inferFileFormat, inferFileFormatFromHeader, inferTrackType, inferIndexPath}
+
+export {
+    knownFileExtensions,
+    getFormat,
+    inferFileFormat,
+    inferFileFormatFromHeader,
+    inferTrackType,
+    inferIndexPath,
+    registerFileFormats,
+    translateDeprecatedTypes
+}

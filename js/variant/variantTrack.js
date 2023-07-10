@@ -35,13 +35,38 @@ import {FileUtils, StringUtils} from "../../node_modules/igv-utils/src/index.js"
 
 const isString = StringUtils.isString
 
-
+const DEFAULT_COLOR = "rgb(0,0,150)"
 const DEFAULT_VISIBILITY_WINDOW = 1000000
 const TOP_MARGIN = 10
 const STANDARD_FIELDS = new Map([["REF", "referenceBases"], ["ALT", "alternateBases"], ["QUAL", "quality"], ["FILTER", "filter"]])
 
 
 class VariantTrack extends TrackBase {
+
+    static defaults = {
+        displayMode: "EXPANDED",
+        sortDirection: "ASC",
+        showGenotypes: true,
+        squishedVariantHeight: 2,
+        squishedCallHeight: 1,
+        expandedCallHeight: 10,
+        expandedVGap: 2,
+        squishedVGap: 1,
+        expandedGroupGap: 10,
+        squishedGroupGap: 5,
+        featureHeight: 14,
+        noGenotypeColor: "rgb(200,180,180)",
+        noCallColor: "rgb(225, 225, 225)",
+        nonRefColor: "rgb(200, 200, 215)",
+        mixedColor: "rgb(200, 220, 200)",
+        homrefColor: "rgb(200, 200, 200)",
+        homvarColor: "rgb(17,248,254)",
+        hetvarColor: "rgb(34,12,253)",
+        colorBy: undefined,
+        visibilityWindow: undefined,
+        labelDisplayMode: undefined,
+        type: "variant"
+    }
 
     constructor(config, browser) {
         super(config, browser)
@@ -51,41 +76,19 @@ class VariantTrack extends TrackBase {
 
         super.init(config)
 
-        this.visibilityWindow = config.visibilityWindow
-        this.displayMode = config.displayMode || "EXPANDED"    // COLLAPSED | EXPANDED | SQUISHED
-        this.labelDisplayMode = config.labelDisplayMode
         this.expandedVariantHeight = config.expandedVariantHeight || config.variantHeight || 10
-        this.squishedVariantHeight = config.squishedVariantHeight || 2
-        this.squishedCallHeight = config.squishedCallHeight || 1
-        this.expandedCallHeight = config.expandedCallHeight || 10
-        this.expandedVGap = config.expandedVGap !== undefined ? config.expandedVGap : 2
-        this.squishedVGap = config.squishedVGap !== undefined ? config.squishedVGap : 1
-        this.expandedGroupGap = config.expandedGroupGap || 10
-        this.squishedGroupGap = config.squishedGroupGap || 5
-        this.featureHeight = config.featureHeight || 14
-        this.visibilityWindow = config.visibilityWindow
-        this.featureSource = FeatureSource(config, this.browser.genome)
-        this.noGenotypeColor = config.noGenotypeColor || "rgb(200,180,180)"
-        this.noCallColor = config.noCallColor || "rgb(225, 225, 225)"
-        this.nonRefColor = config.nonRefColor || "rgb(200, 200, 215)"
-        this.mixedColor = config.mixedColor || "rgb(200, 220, 200)"
-        this.homrefColor = config.homrefColor || "rgb(200, 200, 200)"
-        this.homvarColor = config.homvarColor || "rgb(17,248,254)"
-        this.hetvarColor = config.hetvarColor || "rgb(34,12,253)"
-        this.sortDirection = "ASC"
-        this.type = config.type || "variant"
 
-        this.colorBy = config.colorBy   // Can be undefined => default
+        this.featureSource = FeatureSource(config, this.browser.genome)
+
         this._initColorBy = config.colorBy
         if (config.colorTable) {
             this.colorTables = new Map()
             this.colorTables.set(config.colorBy, new ColorTable(config.colorTable))
         }
-
+        this._color = config.color
         this._strokecolor = config.strokecolor
         this._context_hook = config.context_hook
 
-        this.showGenotypes = config.showGenotypes === undefined ? true : config.showGenotypes
 
         // The number of variant rows are computed dynamically, but start with "1" by default
         this.variantRowCount(1)
@@ -95,7 +98,7 @@ class VariantTrack extends TrackBase {
     async postInit() {
 
         this.header = await this.getHeader()   // cricital, don't remove'
-        if(this.disposed) return;   // This track was removed during async load
+        if (this.disposed) return   // This track was removed during async load
         if (undefined === this.visibilityWindow && this.config.indexed !== false) {
             const fn = FileUtils.isFile(this.config.url) ? this.config.url.name : this.config.url
             if (isString(fn) && fn.toLowerCase().includes("gnomad")) {
@@ -115,7 +118,7 @@ class VariantTrack extends TrackBase {
     }
 
     get color() {
-        return this._color
+        return this._color || DEFAULT_COLOR
     }
 
     set color(c) {
@@ -198,7 +201,7 @@ class VariantTrack extends TrackBase {
         this.variantBandHeight = TOP_MARGIN + rowCount * (variantHeight + vGap)
 
         let callSets = this.callSets
-        if(!callSets && this._f) {
+        if (!callSets && this._f) {
             callSets = this._f.callSets   // "Complementary" variant for structural variants
         }
         const nCalls = this.getCallsetsLength()
@@ -233,14 +236,14 @@ class VariantTrack extends TrackBase {
                     x += 1
                     w -= 2
                 }
-                context.fillStyle = this.getVariantColor(variant)
+                context.fillStyle = this.getColorForFeature(variant)
                 context.fillRect(x, y, w, h)
 
                 //only paint stroke if a color is defined
                 let strokecolor = this.getVariantStrokecolor(variant)
-                if (strokecolor){
-                  context.strokeStyle = strokecolor
-                  context.strokeRect(x, y, w, h)
+                if (strokecolor) {
+                    context.strokeStyle = strokecolor
+                    context.strokeRect(x, y, w, h)
                 }
 
                 // call hook if _context_hook fn is defined
@@ -256,7 +259,7 @@ class VariantTrack extends TrackBase {
                     this.sampleHeight = nVariantRows * (callHeight + vGap)  // For each sample, there is a call for each variant at this position
 
                     let sampleNumber = 0
-                    if(callSets && variant.calls) {
+                    if (callSets && variant.calls) {
                         for (let callSet of callSets) {
                             const call = variant.calls[callSet.id]
                             if (call) {
@@ -305,7 +308,8 @@ class VariantTrack extends TrackBase {
         }
     };
 
-    getVariantColor(variant) {
+
+    getColorForFeature(variant) {
 
         const v = variant._f || variant
         let variantColor
@@ -331,10 +335,11 @@ class VariantTrack extends TrackBase {
         } else if ("MIXED" === v.type) {
             variantColor = this.mixedColor
         } else {
-            variantColor = this.defaultColor
+            variantColor = this.color
         }
         return variantColor
     }
+
 
     getVariantStrokecolor(variant) {
 
@@ -351,13 +356,13 @@ class VariantTrack extends TrackBase {
 
     callContextHook(variant, context, x, y, w, h) {
         if (this._context_hook) {
-          if (typeof this._context_hook === "function") {
-            const v = variant._f || variant
+            if (typeof this._context_hook === "function") {
+                const v = variant._f || variant
 
-            context.save()
-            this._context_hook(v, context, x, y, w, h)
-            context.restore()
-          }
+                context.save()
+                this._context_hook(v, context, x, y, w, h)
+                context.restore()
+            }
         }
     }
 
@@ -401,7 +406,7 @@ class VariantTrack extends TrackBase {
      */
     popupData(clickState, featureList) {
 
-        if(featureList === undefined) featureList = this.clickedFeatures(clickState)
+        if (featureList === undefined) featureList = this.clickedFeatures(clickState)
         const genomicLocation = clickState.genomicLocation
         const genomeID = this.browser.genome.id
         const sampleInformation = this.browser.sampleInformation
@@ -629,9 +634,16 @@ class VariantTrack extends TrackBase {
 
     sendChordsForViewport(viewport) {
         const refFrame = viewport.referenceFrame
-        const inView = "all" === refFrame.chr ?
-            this.featureSource.getAllFeatures() :
-            this.featureSource.featureCache.queryFeatures(refFrame.chr, refFrame.start, refFrame.end)
+        let inView
+        if ("all" === refFrame.chr) {
+            const all = this.featureSource.getAllFeatures()
+            const arrays = Object.keys(all).map(k => all[k])
+            inView = [].concat(...arrays)
+        } else {
+            inView = this.featureSource.featureCache.queryFeatures(refFrame.chr, refFrame.start, refFrame.end)
+
+        }
+
         const chords = makeVCFChords(inView)
         sendChords(chords, this, refFrame, 0.5)
     }

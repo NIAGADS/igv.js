@@ -23,7 +23,8 @@
  * THE SOFTWARE.
  */
 
-import {DOMUtils, StringUtils} from "../node_modules/igv-utils/src/index.js"
+import {StringUtils} from "../node_modules/igv-utils/src/index.js"
+import {DOMUtils} from "../node_modules/igv-ui/dist/igv-ui.js"
 import {prettyBasePairNumber, validateGenomicExtent} from "./util/igvUtils.js"
 import GtexSelection from "./gtex/gtexSelection.js"
 
@@ -154,12 +155,27 @@ class ReferenceFrame {
         return this.genome.getChromosome(this.chr)
     }
 
-    getMultiLocusLabel(pixels) {
+    getMultiLocusLabelBPLengthOnly(pixels) {
         const margin = '&nbsp'
-        const space = '&nbsp &nbsp &nbsp'
+        const space = '&nbsp &nbsp'
         const ss = Math.floor(this.start) + 1
         const ee = Math.round(this.start + this.bpPerPixel * pixels)
-        return `${margin}${this.chr}${space}${prettyBasePairNumber(ee - ss)}${margin}`
+        return `${margin}${this.chr}${margin}${prettyBasePairNumber(ee - ss)}${margin}`
+    }
+
+    getMultiLocusLabelLocusOnly(pixels) {
+        const margin = '&nbsp'
+        const {chr, start, end } = this.getPresentationLocusComponents(pixels)
+        return `${margin}${chr}:${start}-${end}${margin}`
+    }
+
+    getMultiLocusLabel(pixels) {
+        const margin = '&nbsp'
+        const space = '&nbsp &nbsp'
+        const {chr, start, end } = this.getPresentationLocusComponents(pixels)
+        const ss = Math.floor(this.start) + 1
+        const ee = Math.round(this.start + this.bpPerPixel * pixels)
+        return `${margin}${chr}:${start}-${end}${margin}${margin}(${prettyBasePairNumber(ee - ss)})${margin}`
     }
 
     getPresentationLocusComponents(pixels) {
