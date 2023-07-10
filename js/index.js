@@ -33,7 +33,6 @@ import TrackBase from "./trackBase.js";
 import GenomicInterval from "./genome/genomicInterval";
 import featurePacker from "./feature/featurePacker";
 import FeatureSource from "./feature/featureSource";
-import TrackBase from "../js/trackBase.js";
 import {
   BinnedColorScale,
   ConstantColorScale,
