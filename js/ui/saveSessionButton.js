@@ -1,4 +1,4 @@
-import {DOMUtils} from '../../node_modules/igv-utils/src/index.js'
+import { DOMUtils } from '../../node_modules/igv-ui/dist/igv-ui.js'
 import { FileUtils } from '../../node_modules/igv-utils/src/index.js'
 
 const SaveSessionButton = function (parent, browser) {
