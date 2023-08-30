@@ -187,6 +187,8 @@ function renderFeatureLabel(ctx, feature, featureX, featureX1, featureY, referen
         if (name === undefined) name = feature.id || feature.ID
         if (!name || name === '.') return
 
+        // eg., APOE-217
+        if (feature.geneObject && feature.name.includes(feature.geneObject.name)) name = feature.geneObject.name
 
         let pixelXOffset = options.pixelXOffset || 0
         const t1 = Math.max(featureX, -pixelXOffset)
