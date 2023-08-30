@@ -463,7 +463,7 @@ class TrackBase {
                 str += wrapKeyValue('URL', this.url)
             }
         } else {
-            str = this.name
+            str += wrapKeyValue("Track", this.name)
         }
         if (this.config) {
             if (this.config.metadata) {
