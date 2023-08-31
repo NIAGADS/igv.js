@@ -150,6 +150,10 @@ class FeatureParser {
             }
         }
 
+        if (!header.format) { // needed for custom decoders
+            header.format = this.config.format
+        }
+
         this.header = header    // Directives might be needed for parsing lines
         return header
     }
