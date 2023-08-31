@@ -69,6 +69,7 @@ class FeatureParser {
         if (config.decode) {
             this.decode = config.decode
             this.delimiter = config.delimiter || "\t"
+            this.header.format = config.format.toLowerCase() // needed for custom decoders
         } else if (config.format) {
             this.header.format = config.format.toLowerCase()
             this.setDecoder(this.header.format)
@@ -148,10 +149,6 @@ class FeatureParser {
                     header.thicknessColumn = n
                 }
             }
-        }
-
-        if (!header.format) { // needed for custom decoders
-            header.format = this.config.format
         }
 
         this.header = header    // Directives might be needed for parsing lines
