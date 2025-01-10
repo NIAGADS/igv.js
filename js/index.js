@@ -6,7 +6,13 @@ import { IGVMath, FeatureCache,FileUtils, IGVColor, StringUtils } from "../node_
 import GenomicInterval from "./genome/genomicInterval";
 import featurePacker from "./feature/featurePacker";
 import FeatureSource from "./feature/featureSource";
-import { BinnedColorScale, ConstantColorScale, GradientColorScale, } from "./util/colorScale.js";
+import { BinnedColorScale, ConstantColorScale, GradientColorScale } from "./util/colorScale.js";
+import {
+    randomColor as randomColorPalette,
+    ColorTable,
+    PaletteColorTable,
+    appleCrayonPalette,
+  } from "./util/colorPalletes";
 import { makeVCFChords } from "./jbrowse/circularViewUtils";
 
 // Defines the top-level API for the igv module
@@ -74,6 +80,10 @@ export default {
     BinnedColorScale,
     ConstantColorScale,
     GradientColorScale,
+    randomColorPalette,
+    ColorTable,
+    PaletteColorTable,
+    appleCrayonPalette,
     makeVCFChords
 }
 
