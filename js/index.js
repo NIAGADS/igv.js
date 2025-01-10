@@ -1,5 +1,15 @@
-// Defines the top-level API for the igv module
+// Added for NIAGADS custom tracks and decoders
+import { createCheckbox } from "./igv-icons.js"; 
+import { doAutoscale } from "./util/igvUtils.js";
+import TrackView from "./trackView.js";
+import { IGVMath, FeatureCache,FileUtils, IGVColor, StringUtils } from "../node_modules/igv-utils/src/index.js"
+import GenomicInterval from "./genome/genomicInterval";
+import featurePacker from "./feature/featurePacker";
+import FeatureSource from "./feature/featureSource";
+import { BinnedColorScale, ConstantColorScale, GradientColorScale, } from "./util/colorScale.js";
+import { makeVCFChords } from "./jbrowse/circularViewUtils";
 
+// Defines the top-level API for the igv module
 import MenuUtils from "./ui/menuUtils.js"
 import DataRangeDialog from "./ui/dataRangeDialog.js"
 import IGVGraphics from "./igv-canvas.js"
@@ -47,6 +57,23 @@ export default {
     registerTrackClass,
     registerTrackCreatorFunction,
     registerFileFormats,
-    loadSessionFile: Browser.loadSessionFile
+    loadSessionFile: Browser.loadSessionFile,
+
+    // added by NIAGADS
+    createCheckbox,
+    doAutoscale,
+    TrackView,
+    IGVMath,
+    FeatureCache,
+    FileUtils,
+    IGVColor,
+    StringUtils,
+    GenomicInterval,
+    featurePacker,
+    FeatureSource,
+    BinnedColorScale,
+    ConstantColorScale,
+    GradientColorScale,
+    makeVCFChords
 }
 
