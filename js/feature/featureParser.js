@@ -76,9 +76,11 @@ class FeatureParser {
             this.decode = config.decode
             this.delimiter = config.delimiter || "\t"
         } else if (config.format) {
-            this.header.format = config.format.toLowerCase()
+            // this.header.format = config.format.toLowerCase() // commented by NIAGADS
             this.setDecoder(this.header.format)
         }
+
+        this.header.format = config.format.toLowerCase() // added by NIAGADS: need to specify format for decoders too
 
         if (!this.delimiter) {
             this.delimiter = "\t"
@@ -121,8 +123,9 @@ class FeatureParser {
                 }
             } else {
                 // All directives that could change the format, and thus decoder, should have been read by now.
-                this.setDecoder(header.format)
-
+                if (this.decode == undefined) { // NIAGADS - set decoder based on format only if no custom decoder is already defined
+                    this.setDecoder(header.format)
+                }
                 // If the line can be parsed as a feature assume we are beyond the header, if any
                 const tokens = line.split(this.delimiter || "\t")
                 try {
@@ -154,6 +157,10 @@ class FeatureParser {
                     header.thicknessColumn = n
                 }
             }
+        }
+
+        if (!header.format) { // NIAGADS format needed for custom decoders
+            header.format = this.config.format
         }
 
         this.header = header    // Directives might be needed for parsing lines
