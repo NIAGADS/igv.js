@@ -71,7 +71,8 @@ class FeatureParser {
         }
 
         this.skipRows = 0   // The number of fixed header rows to skip.  Override for specific types as needed
-
+        this.header.format = config.format.toLowerCase() // added by NIAGADS: need to specify format for decoders too
+        
         if (config.decode) {
             this.decode = config.decode
             this.delimiter = config.delimiter || "\t"
@@ -80,7 +81,7 @@ class FeatureParser {
             this.setDecoder(this.header.format)
         }
 
-        this.header.format = config.format.toLowerCase() // added by NIAGADS: need to specify format for decoders too
+
 
         if (!this.delimiter) {
             this.delimiter = "\t"
