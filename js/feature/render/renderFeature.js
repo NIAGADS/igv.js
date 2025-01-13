@@ -355,7 +355,7 @@ function renderFeatureLabel(ctx, feature, featureX, featureX1, featureY, referen
         if (name === undefined && feature.gene) name = feature.gene.name
         if (name === undefined) name = feature.id || feature.ID
 
-        // NIAGADS: find feature name from gene object if present
+        // NIAGADS: find feature name from gene object if present; second line catches transcripts and labels by gene name only APOE-217
         if (name === undefined && feature.geneObject) name = feature.geneObject.name 
         if (name !== undefined && feature.geneObject && feature.name.includes(feature.geneObject.name)) name = feature.geneObject.name
         
