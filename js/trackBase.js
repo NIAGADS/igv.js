@@ -493,7 +493,7 @@ class TrackBase {
                 str += wrapKeyValue('URL', this.url)
             }
         } else {
-            str = this.name
+            str += wrapKeyValue("Track", this.name) // NIAGADS; apply CSS and consistent formatting
         }
         if (this.config) {
             if (this.config.metadata) {
