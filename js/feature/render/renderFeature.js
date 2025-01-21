@@ -358,7 +358,13 @@ function renderFeatureLabel(ctx, feature, featureX, featureX1, featureY, referen
         // NIAGADS: find feature name from gene object if present; second line catches transcripts and labels by gene name only APOE-217
         if (name === undefined && feature.geneObject) name = feature.geneObject.name 
         if (name !== undefined && feature.geneObject && feature.name.includes(feature.geneObject.name)) name = feature.geneObject.name
-        
+
+        // NIAGADS if none of this catches APOE-217 type qualifiers, use a regex match
+        const regex = /^.+-\d\d\d$/;
+        if (name.match(pattern)) {
+            name = name.split('-')[0]
+        }
+
         if (!name || name === '.') return
 
         let pixelXOffset = options.pixelXOffset || 0
