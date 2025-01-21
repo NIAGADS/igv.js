@@ -87,3 +87,29 @@ export default {
     makeVCFChords
 }
 
+
+
+// Non-default exports; required / added by NIAGADS
+export { TrackBase,
+    createCheckbox,
+    doAutoscale,
+    TrackView,
+    IGVMath,
+    FeatureCache,
+    FileUtils,
+    IGVColor,
+    StringUtils,
+    GenomicInterval,
+    featurePacker,
+    FeatureSource,
+    BinnedColorScale,
+    ConstantColorScale,
+    GradientColorScale,
+    randomColorPalette,
+    ColorTable,
+    PaletteColorTable,
+    appleCrayonPalette,
+    makeVCFChords
+ };
+
+
