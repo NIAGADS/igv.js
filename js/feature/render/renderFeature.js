@@ -360,7 +360,7 @@ function renderFeatureLabel(ctx, feature, featureX, featureX1, featureY, referen
         if (name !== undefined && feature.geneObject && feature.name.includes(feature.geneObject.name)) name = feature.geneObject.name
 
         // NIAGADS if none of this catches APOE-217 type qualifiers, use a regex match
-        const regex = /^.+-\d\d\d$/;
+        const pattern = /^.+-\d\d\d$/;
         if (name.match(pattern)) {
             name = name.split('-')[0]
         }
