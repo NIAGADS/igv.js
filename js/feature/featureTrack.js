@@ -324,6 +324,10 @@ class FeatureTrack extends TrackBase {
                         !fd.value.startsWith("<")) {
                         const href = infoURL.replace("$$", feature.name)
                         fd.value = `<a target=_blank href=${href}>${fd.value}</a>`
+
+                        // NIAGADS - need to save the ID w/out the URL info concatenated
+                        // so that it is accessible to custom popups
+                        data.push({name: 'display_id', value: feature.name})
                     }
                 }
 
