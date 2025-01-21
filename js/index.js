@@ -90,7 +90,11 @@ export default {
 
 
 // Non-default exports; required / added by NIAGADS
-export { TrackBase,
+export { 
+    TrackBase,
+    IGVGraphics,
+    MenuUtils,
+    
     createCheckbox,
     doAutoscale,
     TrackView,
