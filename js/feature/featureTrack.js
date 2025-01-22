@@ -337,7 +337,7 @@ class FeatureTrack extends TrackBase {
                         if (fd.name === this.colorBy) {
                             color = this.color ? this.color(fd.value) : this.colorTable ? this.colorTable.getColor(fd.value) : null;
                             if (color !== null) {
-                                data.push({color: color});
+                                Object.assign(fd, {color: color})
                             }
                         }
                     }
