@@ -66,6 +66,7 @@ export default {
     loadSessionFile: Browser.loadSessionFile,
 
     // added by NIAGADS
+    igvxhr,
     createCheckbox,
     doAutoscale,
     TrackView,
