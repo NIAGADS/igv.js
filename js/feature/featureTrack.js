@@ -316,6 +316,7 @@ class FeatureTrack extends TrackBase {
                 const infoURL = this.infoURL || this.config.infoURL
                 for (let fd of featureData) {
                     data.push(fd)
+
                     if (infoURL &&
                         fd.name &&
                         fd.name.toLowerCase() === "name" &&
@@ -328,6 +329,17 @@ class FeatureTrack extends TrackBase {
                         // NIAGADS - need to save the ID w/out the URL info concatenated
                         // so that it is accessible to custom popups
                         data.push({name: 'display_id', value: feature.name})
+                    }
+
+                     // NIAGADS - pass colorBy to the popupData for 
+                     // added here since we are already iterating over the featureData array
+                    if (this.colorBy) {
+                        if (fd.name === this.colorBy) {
+                            color = this.color ? this.color(fd.value) : this.colorTable ? this.colorTable.getColor(fd.value) : null;
+                            if (color !== null) {
+                                data.push({color: color});
+                            }
+                        }
                     }
                 }
 
