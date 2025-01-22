@@ -2,16 +2,16 @@ import $ from "../vendor/jquery-3.3.1.slim.js"
 import FeatureSource from './featureSource.js'
 import TrackBase from "../trackBase.js"
 import IGVGraphics from "../igv-canvas.js"
-import {createCheckbox} from "../igv-icons.js"
-import {reverseComplementSequence} from "../util/sequenceUtils.js"
-import {aminoAcidSequenceRenderThreshold, renderFeature} from "./render/renderFeature.js"
-import {renderSnp} from "./render/renderSnp.js"
-import {renderFusionJuncSpan} from "./render/renderFusionJunction.js"
-import {StringUtils} from "../../node_modules/igv-utils/src/index.js"
-import {ColorTable, PaletteColorTable} from "../util/colorPalletes.js"
-import {isSecureContext, expandRegion} from "../util/igvUtils.js"
-import {IGVColor} from "../../node_modules/igv-utils/src/index.js"
-import {findFeatureAfterCenter} from "./featureUtils.js"
+import { createCheckbox } from "../igv-icons.js"
+import { reverseComplementSequence } from "../util/sequenceUtils.js"
+import { aminoAcidSequenceRenderThreshold, renderFeature } from "./render/renderFeature.js"
+import { renderSnp } from "./render/renderSnp.js"
+import { renderFusionJuncSpan } from "./render/renderFusionJunction.js"
+import { StringUtils } from "../../node_modules/igv-utils/src/index.js"
+import { ColorTable, PaletteColorTable } from "../util/colorPalletes.js"
+import { isSecureContext, expandRegion } from "../util/igvUtils.js"
+import { IGVColor } from "../../node_modules/igv-utils/src/index.js"
+import { findFeatureAfterCenter } from "./featureUtils.js"
 
 class FeatureTrack extends TrackBase {
 
@@ -143,7 +143,7 @@ class FeatureTrack extends TrackBase {
 
     async getFeatures(chr, start, end, bpPerPixel) {
         const visibilityWindow = this.visibilityWindow
-        return this.featureSource.getFeatures({chr, start, end, bpPerPixel, visibilityWindow})
+        return this.featureSource.getFeatures({ chr, start, end, bpPerPixel, visibilityWindow })
     }
 
     /**
@@ -191,7 +191,7 @@ class FeatureTrack extends TrackBase {
      */
     draw(options) {
 
-        const {features, context, bpPerPixel, bpStart, bpEnd, pixelWidth, pixelHeight, referenceFrame} = options
+        const { features, context, bpPerPixel, bpStart, bpEnd, pixelWidth, pixelHeight, referenceFrame } = options
 
         // If drawing amino acids fetch cached sequence interval.  It is not needed if track does not support AA, but
         // costs nothing since only a reference to a cached object is fetched.
@@ -201,7 +201,7 @@ class FeatureTrack extends TrackBase {
 
 
         if (!this.isMergedTrack) {
-            IGVGraphics.fillRect(context, 0, options.pixelTop, pixelWidth, pixelHeight, {'fillStyle': "rgb(255, 255, 255)"})
+            IGVGraphics.fillRect(context, 0, options.pixelTop, pixelWidth, pixelHeight, { 'fillStyle': "rgb(255, 255, 255)" })
         }
 
         if (features) {
@@ -246,7 +246,7 @@ class FeatureTrack extends TrackBase {
                     const pxStart = Math.floor((feature.start - bpStart) / bpPerPixel)
                     if (last && pxStart - last <= 0) {
                         context.globalAlpha = 0.5
-                        IGVGraphics.strokeLine(context, pxStart, 0, pxStart, pixelHeight, {'strokeStyle': "rgb(255, 255, 255)"})
+                        IGVGraphics.strokeLine(context, pxStart, 0, pxStart, pixelHeight, { 'strokeStyle': "rgb(255, 255, 255)" })
                         context.globalAlpha = 1.0
                     }
                     lastPxEnd[row] = pxEnd
@@ -328,17 +328,15 @@ class FeatureTrack extends TrackBase {
 
                         // NIAGADS - need to save the ID w/out the URL info concatenated
                         // so that it is accessible to custom popups
-                        data.push({name: 'display_id', value: feature.name})
+                        data.push({ name: 'display_id', value: feature.name })
                     }
 
-                     // NIAGADS - pass colorBy to the popupData for 
-                     // added here since we are already iterating over the featureData array
-                    if (this.colorBy) {
-                        if (fd.name.replace(':','') === this.colorBy) { // sometimes ':' is concatenated to the end of the field name
-                            const color = this.color ? this.color(f) : this.colorTable ? this.colorTable.getColor(fd.value) : null;
-                            if (color !== null) {
-                                Object.assign(fd, {color: color})
-                            }
+                    // NIAGADS - pass colorBy to the popupData for 
+                    // added here since we are already iterating over the featureData array
+                    if (this.colorBy && fd.name && fd.name.replace(':', '') === this.colorBy) { // sometimes ':' is concatenated to the end of the field name
+                        const color = this.color ? this.color(f) : this.colorTable ? this.colorTable.getColor(fd.value) : null;
+                        if (color !== null) {
+                            Object.assign(fd, { color: color })
                         }
                     }
                 }
@@ -358,7 +356,7 @@ class FeatureTrack extends TrackBase {
                                 f.strand === "-" ? f.exons.length - i : i + 1
                             if (exonNumber) {
                                 data.push('<hr/>')
-                                data.push({name: "Exon Number", value: exonNumber})
+                                data.push({ name: "Exon Number", value: exonNumber })
                             }
                             break
                         }
@@ -387,18 +385,18 @@ class FeatureTrack extends TrackBase {
                     this.trackView.repaintViews()
                 }
 
-                menuItems.push({object, click: colorSchemeHandler})
+                menuItems.push({ object, click: colorSchemeHandler })
             }
         }
 
         menuItems.push('<hr/>')
 
         const lut =
-            {
-                "COLLAPSED": "Collapse",
-                "SQUISHED": "Squish",
-                "EXPANDED": "Expand"
-            }
+        {
+            "COLLAPSED": "Collapse",
+            "SQUISHED": "Squish",
+            "EXPANDED": "Expand"
+        }
 
         for (const displayMode of ["COLLAPSED", "SQUISHED", "EXPANDED"]) {
 
@@ -411,7 +409,7 @@ class FeatureTrack extends TrackBase {
                 this.trackView.repaintViews()
             }
 
-            menuItems.push({object, click: displayModeHandler})
+            menuItems.push({ object, click: displayModeHandler })
         }
 
         return menuItems
