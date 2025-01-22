@@ -335,7 +335,7 @@ class FeatureTrack extends TrackBase {
                      // added here since we are already iterating over the featureData array
                     if (this.colorBy) {
                         if (fd.name.replace(':','') === this.colorBy) { // sometimes ':' is concatenated to the end of the field name
-                            color = this.color ? this.color(f) : this.colorTable ? this.colorTable.getColor(fd.value) : null;
+                            const color = this.color ? this.color(f) : this.colorTable ? this.colorTable.getColor(fd.value) : null;
                             if (color !== null) {
                                 Object.assign(fd, {color: color})
                             }
