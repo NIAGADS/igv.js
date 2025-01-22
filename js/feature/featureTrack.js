@@ -334,7 +334,7 @@ class FeatureTrack extends TrackBase {
                      // NIAGADS - pass colorBy to the popupData for 
                      // added here since we are already iterating over the featureData array
                     if (this.colorBy) {
-                        if (fd.name === this.colorBy) {
+                        if (fd.name.replace(':','') === this.colorBy) { // sometimes ':' is concatenated to the end of the field name
                             color = this.color ? this.color(fd.value) : this.colorTable ? this.colorTable.getColor(fd.value) : null;
                             if (color !== null) {
                                 Object.assign(fd, {color: color})
