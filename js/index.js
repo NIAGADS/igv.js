@@ -116,7 +116,8 @@ export {
     ColorTable,
     PaletteColorTable,
     appleCrayonPalette,
-    makeVCFChords
+    makeVCFChords,
+    FeatureFileReader
 };
 
 
