@@ -23,8 +23,6 @@
  * THE SOFTWARE.
  */
 
-import {decodeBedpe, decodeBedpeDomain, fixBedPE} from './decode/bedpe.js'
-import {decodeInteract} from "./decode/interact.js"
 import {
     decodeBed,
     decodeBedGraph,
@@ -39,16 +37,18 @@ import {
     decodeSNP,
     decodeWig
 } from "./decode/ucsc.js"
-import {decodeGFF3, decodeGTF} from "./gff/gff.js"
-import {decodeFusionJuncSpan} from "./decode/fusionJuncSpan.js"
-import {decodeGtexGWAS} from "./decode/gtexGWAS.js"
-import {decodeCustom} from "./decode/custom.js"
-import {decodeGcnv} from "../gcnv/gcnvDecoder.js"
-import decodeShoebox from "../shoebox/decodeShoebox.js"
+import { decodeBedpe, decodeBedpeDomain, fixBedPE } from './decode/bedpe.js'
+import { decodeGFF3, decodeGTF } from "./gff/gff.js"
+
 import DecodeError from "./decode/decodeError.js"
 import GFFHelper from "./gff/gffHelper.js"
-
-import {getFormat} from "../util/fileFormats.js"
+import { decodeCustom } from "./decode/custom.js"
+import { decodeFusionJuncSpan } from "./decode/fusionJuncSpan.js"
+import { decodeGcnv } from "../gcnv/gcnvDecoder.js"
+import { decodeGtexGWAS } from "./decode/gtexGWAS.js"
+import { decodeInteract } from "./decode/interact.js"
+import decodeShoebox from "../shoebox/decodeShoebox.js"
+import { getFormat } from "../util/fileFormats.js"
 
 /**
  *  Parser for column style (tab delimited, etc) text file formats (bed, gff, vcf, etc).
@@ -71,13 +71,15 @@ class FeatureParser {
         }
 
         this.skipRows = 0   // The number of fixed header rows to skip.  Override for specific types as needed
-        this.header.format = config.format.toLowerCase() // added by NIAGADS: need to specify format for decoders too
-        
+
         if (config.decode) {
             this.decode = config.decode
             this.delimiter = config.delimiter || "\t"
+            if (config.format) {
+                this.header.format = config.format.toLowerCase() // added by NIAGADS: need to specify format for decoders too
+            }
         } else if (config.format) {
-            // this.header.format = config.format.toLowerCase() // commented by NIAGADS
+            this.header.format = config.format.toLowerCase() // commented by NIAGADS
             this.setDecoder(this.header.format)
         }
 
@@ -130,7 +132,7 @@ class FeatureParser {
                 // If the line can be parsed as a feature assume we are beyond the header, if any
                 const tokens = line.split(this.delimiter || "\t")
                 try {
-                    const tmpHeader = Object.assign({columnNames}, header)
+                    const tmpHeader = Object.assign({ columnNames }, header)
                     let firstFeature
                     if (firstFeature = this.decode(tokens, tmpHeader)) {
                         header.firstFeature = firstFeature
@@ -246,12 +248,12 @@ class FeatureParser {
                 this.decode = decodeWig
                 this.delimiter = this.config.delimiter || /\s+/
                 break
-            case "gff3" :
+            case "gff3":
             case "gff":
                 this.decode = decodeGFF3
                 this.delimiter = "\t"
                 break
-            case "gtf" :
+            case "gtf":
                 this.decode = decodeGTF
                 this.delimiter = "\t"
                 break
@@ -312,7 +314,7 @@ class FeatureParser {
             case "bedpe-loop":
                 this.decode = decodeBedpe
                 this.delimiter = this.config.delimiter || "\t"
-                this.header = {colorColumn: 7}
+                this.header = { colorColumn: 7 }
                 break
             case "interact":
                 this.decode = decodeInteract
@@ -421,14 +423,14 @@ function parseFixedStep(line) {
     const start = parseInt(tokens[2].split("=")[1], 10) - 1
     const step = parseInt(tokens[3].split("=")[1], 10)
     const span = (tokens.length > 4) ? parseInt(tokens[4].split("=")[1], 10) : 1
-    return {format: "fixedStep", chrom, start, step, span, index: 0}
+    return { format: "fixedStep", chrom, start, step, span, index: 0 }
 }
 
 function parseVariableStep(line) {
     const tokens = line.split(/\s+/)
     const chrom = tokens[1].split("=")[1]
     const span = tokens.length > 2 ? parseInt(tokens[2].split("=")[1], 10) : 1
-    return {format: "variableStep", chrom, span}
+    return { format: "variableStep", chrom, span }
 }
 
 
